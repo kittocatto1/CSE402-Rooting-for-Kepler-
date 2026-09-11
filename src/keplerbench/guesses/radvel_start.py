@@ -5,6 +5,8 @@ Owner: Mahdi.
 
 from __future__ import annotations
 
+import math
+
 from keplerbench.core.base import InitialGuess
 from keplerbench.core.registry import register_guess
 from keplerbench.core.types import KeplerProblem
@@ -12,21 +14,25 @@ from keplerbench.core.types import KeplerProblem
 
 @register_guess("radvel")
 class RadVelGuess(InitialGuess):
-    """Whatever RadVel's ``kepler`` routine uses to seed its Danby iteration.
+    """RadVel's seed for its Danby iteration:  E0 = M + sign(sin M) * 0.85 * e.
 
-    This is the guess our "production baseline" (radvel + danby) uses, so it
-    must be copied faithfully rather than approximated.
+    Copied verbatim from radvel 1.6.4, ``radvel/kepler.py``::
+
+        conv = 1.0e-12  # convergence criterion
+        k = 0.85
+        Earr = Marr + np.sign(np.sin(Marr)) * k * eccarr  # first guess at E
+
+    RadVel does no M normalisation before this line, so neither do we.
+    If upstream changes the seed, our "production baseline" changes with it -
+    re-check this file against the radvel version pinned in pyproject.toml.
     """
 
-    description = "RadVel production starting guess"
+    description = "RadVel 1.6.4 production start: E0 = M + sign(sin M)*0.85*e"
+
+    #: RadVel's tuning constant k.
+    K = 0.85
 
     def __call__(self, problem: KeplerProblem) -> float:
-        # TODO(Mahdi): read the starting guess out of RadVel's source and
-        # reproduce it EXACTLY here.
-        #   1. pip install radvel, then open radvel/kepler.py (function
-        #      ``kepler`` / the Cython ``_kepler`` fallback).
-        #   2. Copy the expression used to seed the Danby loop, including any
-        #      M-range normalisation it does first.
-        #   3. Note the exact radvel version in the docstring - if the guess
-        #      changes upstream our "production baseline" changes with it.
-        raise NotImplementedError("RadVelGuess: see TODO above")
+        s = math.sin(problem.M)
+        sign = math.copysign(1.0, s) if s != 0.0 else 0.0  # np.sign(0) == 0
+        return problem.M + sign * self.K * problem.e

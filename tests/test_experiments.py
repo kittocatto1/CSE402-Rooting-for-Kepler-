@@ -51,3 +51,56 @@ def test_run_sweep_covers_every_combination():
     with skip_if_unimplemented():
         results = run_sweep(["newton"], ["simple"], [(0.1, 1.0), (0.5, 2.0)])
         assert len(results) == 2
+
+
+# ----------------------------------------------------------------------
+# Robustness metrics (evaluation/robustness.py). Owner: Mahdi.
+# ----------------------------------------------------------------------
+def _fake_results():
+    import pandas as pd
+
+    return pd.DataFrame([
+        # ordinary region, fine
+        dict(solver="newton", guess="simple", e=0.5, M=1.0,
+             converged=True, failure=None, error=1e-15),
+        # hard corner, ran out of iterations ("slow")
+        dict(solver="newton", guess="simple", e=0.99, M=0.01,
+             converged=False, failure=None, error=1e-2),
+        # hard corner, blew up ("broken")
+        dict(solver="newton", guess="simple", e=0.99, M=0.05,
+             converged=False, failure="OverflowError", error=None),
+        # hard corner, converged to the wrong root
+        dict(solver="newton", guess="simple", e=0.95, M=0.02,
+             converged=True, failure=None, error=1e-3),
+    ])
+
+
+def test_failure_rates_separates_slow_from_broken():
+    from keplerbench.evaluation.robustness import failure_rates
+
+    with skip_if_unimplemented():
+        row = failure_rates(_fake_results()).iloc[0]
+        assert row["n_points"] == 4
+        assert row["n_converged"] == 2
+        assert row["n_max_iter_hit"] == 1
+        assert row["n_exception"] == 1
+        assert row["failure_rate"] == pytest.approx(0.5)
+
+
+def test_failure_rates_by_region_finds_the_hard_corner():
+    from keplerbench.evaluation.robustness import failure_rates_by_region
+
+    with skip_if_unimplemented():
+        out = failure_rates_by_region(_fake_results()).set_index("region")
+        assert out.loc["hard_corner", "n_points"] == 3
+        assert out.loc["ordinary", "failure_rate"] == pytest.approx(0.0)
+
+
+def test_wrong_root_rate_uses_the_error_not_the_residual():
+    from keplerbench.evaluation.robustness import wrong_root_rate
+
+    with skip_if_unimplemented():
+        row = wrong_root_rate(_fake_results()).iloc[0]
+        assert row["n_converged"] == 2
+        assert row["n_wrong_root"] == 1
+        assert row["wrong_root_rate"] == pytest.approx(0.5)
