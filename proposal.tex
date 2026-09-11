@@ -1,0 +1,447 @@
+\documentclass[11pt,a4paper]{article}
+
+% -------------------------------------------------------------------------
+%  PACKAGES
+% -------------------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage[numbers,sort&compress]{natbib} % or \usepackage{cite}
+\bibliographystyle{unsrt}                   % or plain / apalike
+
+\geometry{a4paper,left=2.6cm,right=2.6cm,top=2.6cm,bottom=2.8cm}
+
+% -------------------------------------------------------------------------
+%  PALETTE  (kept consistent with the companion slide deck)
+% -------------------------------------------------------------------------
+\definecolor{Ink}{HTML}{203247}
+\definecolor{Accent}{HTML}{2E6E8E}
+\definecolor{Highlight}{HTML}{C5681B}
+\definecolor{AccentPale}{HTML}{EAF2F5}
+\definecolor{Paper}{HTML}{FBFBF9}
+\definecolor{Muted}{HTML}{5F6F7B}
+\definecolor{Rule}{HTML}{C9D6DC}
+
+\pagecolor{Paper}
+\color{Ink}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Accent,
+  citecolor=Accent,
+  urlcolor=Accent,
+  pdftitle={Rooting for Kepler: A Comparative Benchmark of Newton-Type Solvers},
+  pdfauthor={CSE 402 Subsection A2}
+}
+
+% -------------------------------------------------------------------------
+%  SECTION TITLING — small-caps, ruled, numbered in a muted serif
+% -------------------------------------------------------------------------
+\titleformat{\section}
+  {\normalfont\Large\scshape\color{Ink}}
+  {\textcolor{Accent}{\thesection}}{0.6em}{}
+  [\vspace{-0.3em}{\color{Rule}\titlerule[0.8pt]}]
+\titlespacing*{\section}{0pt}{1.6em}{0.9em}
+
+\titleformat{\subsection}
+  {\normalfont\large\scshape\color{Accent}}
+  {\thesubsection}{0.55em}{}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.4em}
+
+% -------------------------------------------------------------------------
+%  HEADER / FOOTER
+% -------------------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[L]{\footnotesize\scshape\color{Muted}CSE 402 \textbar\ Numerical Methods}
+\fancyhead[R]{\footnotesize\scshape\color{Muted}Project Proposal}
+\fancyfoot[C]{\footnotesize\color{Muted}\thepage}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{Rule}\leaders\hrule height \headrulewidth\hfill}}
+
+% -------------------------------------------------------------------------
+%  SMALL UTILITIES
+% -------------------------------------------------------------------------
+\newcommand{\key}[1]{\textcolor{Highlight}{\bfseries #1}}
+\newcommand{\marginlab}[1]{\textcolor{Accent}{\scshape\footnotesize #1}}
+
+\newtcolorbox{note}{
+  enhanced, breakable, colback=AccentPale, colframe=Rule,
+  boxrule=0.5pt, arc=0pt, outer arc=0pt,
+  left=8pt, right=8pt, top=6pt, bottom=6pt,
+  before skip=1em, after skip=1em
+}
+\newtcolorbox{notetitled}[1]{
+  enhanced, breakable, colback=AccentPale, colframe=Rule,
+  boxrule=0.5pt, arc=0pt, outer arc=0pt,
+  left=8pt, right=8pt, top=6pt, bottom=6pt,
+  before skip=1em, after skip=1em,
+  fonttitle=\scshape\footnotesize\color{Accent},
+  colbacktitle=AccentPale, coltitle=Accent,
+  title={#1}
+}
+
+\newcommand{\dividerline}{\vspace{0.2em}{\color{Rule}\hrule height 0.5pt}\vspace{0.6em}}
+
+\renewcommand{\arraystretch}{1.3}
+
+\setlist[itemize]{label=\textcolor{Accent}{\small$\bullet$}, leftmargin=1.4em, itemsep=0.15em}
+\setlist[enumerate]{leftmargin=1.6em, itemsep=0.2em}
+
+% =========================================================================
+\begin{document}
+
+% -------------------------------------------------------------------------
+%  TITLE BLOCK
+% -------------------------------------------------------------------------
+\begin{titlepage}
+\pagecolor{Paper}
+\thispagestyle{empty}
+\begin{center}
+  \vspace*{1.6cm}
+  {\color{Accent}\scshape\large CSE 402 \,\textbar\, Numerical Methods\, --\, Project Proposal}\\[0.6cm]
+  {\color{Rule}\rule{0.55\textwidth}{0.8pt}}\\[1.1cm]
+
+  {\color{Ink}\scshape\Huge Rooting for Kepler}\\[0.35cm]
+  {\color{Muted}\Large\itshape a comparative benchmark of\\[2pt] Newton-type root finders and starting guesses}\\[1.4cm]
+
+  {\color{Rule}\rule{0.32\textwidth}{0.6pt}}\\[1.1cm]
+
+  \begin{minipage}{0.72\textwidth}
+    \centering
+    \small\color{Muted}
+    An empirical study of classical, domain-specialised, and\\
+    2024--2025 with-memory Newton-type variants applied to\\
+    Kepler's equation, evaluated on RadVel's radial-velocity fitting pipeline.
+  \end{minipage}
+
+  \vspace{2.2cm}
+  {\scshape\color{Accent}\footnotesize Subsection A2 \quad\textbar\quad Student IDs}\\[0.35cm]
+  {\color{Ink}2105036 \quad 2105050 \quad 2105053 \quad 2105056 \quad 2105059}
+
+  \vfill
+  {\footnotesize\color{Muted}\today}
+\end{center}
+\end{titlepage}
+
+\setcounter{page}{1}
+
+% =========================================================================
+\section{Motivation}
+
+Radial-velocity orbit fitting reduces, at its numerical core, to a single
+repeated task: solving the transcendental Kepler equation
+\[
+  f(E) = E - e\sin E - M = 0
+\]
+for the eccentric anomaly $E$, given a mean anomaly $M$ and eccentricity
+$e$. A fitting pipeline such as \textsc{RadVel} calls this solver on the
+order of $10^5$--$10^7$ times over the course of a single MCMC run, so the
+choice of root finder is not a cosmetic detail --- it is one of the
+dominant costs in the fit, and its accuracy floor propagates directly into
+the recovered orbital parameters.
+
+\textsc{RadVel} itself uses \key{Danby's} higher-order iterative method
+rather than an ordinary Newton--Raphson update, which already signals that
+the "obvious" solver is not automatically the best one for this equation.
+At the same time, the general numerical-analysis literature on
+Newton-type iteration has continued to move: 2024--2025 work on
+\key{with-memory} multipoint schemes reports polynomial convergence orders
+in excess of $10$, obtained by recycling already-computed function values
+across iterations rather than by paying for new derivative evaluations.
+
+\begin{notetitled}{Why this is not a settled question}
+None of the recent with-memory papers were written with Kepler's equation
+in mind, and Kepler's equation has a cost structure --- one transcendental
+call can cheaply return \emph{both} $\sin E$ and $\cos E$ --- that generic
+efficiency-index comparisons ($E=\rho^{1/\gamma}$) do not capture. Whether
+a higher formal convergence order actually pays off once this
+Kepler-specific evaluation cost is accounted for, and across the
+$(e,M)$ operating range that real radial-velocity fits encounter, is an
+open, testable question rather than a foregone conclusion.
+\end{notetitled}
+
+% =========================================================================
+\section{Scope Statement}
+
+The purpose of this project is to build a controlled, Kepler-specific
+benchmark of five root-finding variants and one alternative starting-guess
+strategy, and to measure --- not assume --- how they compare.
+
+\begin{tcolorbox}[
+  enhanced, colback=Paper, colframe=Accent, boxrule=0.9pt, arc=0pt,
+  left=10pt,right=10pt,top=8pt,bottom=8pt, before skip=1em, after skip=1.2em
+]
+\scshape\color{Ink}\small We are explicitly \emph{not} setting out to prove
+that the newer with-memory Newton-type variants outperform, or
+underperform, the classical solvers already used for Kepler's equation.
+\normalfont\upshape\color{Ink} The project is designed as an experiment
+whose outcome is not fixed in advance: the newer variants may win on some
+axes (order, iteration count) and lose on others (per-iteration cost,
+robustness at high eccentricity), and part of the deliverable is
+characterising exactly where that trade-off falls.
+\end{tcolorbox}
+
+% =========================================================================
+\phantomsection
+\section*{Addressing Supervisor Feedback}
+\begingroup\emergencystretch=1.6em
+
+An earlier draft of this proposal was scoped narrowly, around substituting an
+ordinary Newton--Raphson update for the Danby iteration currently used in
+\textsc{RadVel}. Supervisory review identified that this framing was too
+restrictive. The standard Newton--Raphson method is unlikely to be the right
+replacement for a domain-tuned higher-order scheme, and a study built around a
+single alternative could not establish whether any observed difference was
+attributable to the iteration itself. The revisions below were made in
+response, and they account for the present structure of Sections~3 and~4.
+
+\vspace{0.5em}
+\begingroup
+\small
+\setlength{\tabcolsep}{5.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{1.3cm}@{}}
+\toprule
+\textbf{Feedback} & \textbf{Revision} & \textbf{Section} \\
+\midrule
+Do not limit the study to standard Newton--Raphson.
+& Candidate set widened to five solvers across three categories.
+& \textcolor{Accent}{3} \\
+\addlinespace[0.55em]
+Explore a range of alternatives, not one substitution.
+& Two with-memory schemes (2024--2025) added.
+& \textcolor{Accent}{3.2} \\
+\addlinespace[0.55em]
+Retain the baseline so results stay interpretable.
+& Newton--Raphson kept as anchor; category sizes balanced.
+& \textcolor{Accent}{3.1} \\
+\addlinespace[0.55em]
+Do not presuppose that the newer methods are superior.
+& Scope statement fixes the design, not the expected result.
+& \textcolor{Accent}{2, 6} \\
+\addlinespace[0.35em]
+\bottomrule
+\end{tabularx}
+\endgroup
+
+\vspace{0.4em}
+\begin{note}
+The net effect of these revisions is a change of research question. The study
+no longer asks whether one specific solver can replace another. It asks under which
+conditions of eccentricity, mean anomaly, and Kepler-specific evaluation cost
+each class of Newton-type method is preferable. This is a question whose
+answer is not determined in advance by the choice of methods.
+\end{note}
+\endgroup
+
+% =========================================================================
+\section{Candidate Methods}
+
+Five solvers are selected to span three categories that are each
+represented by exactly two members, plus one initial-guess strategy that
+is evaluated orthogonally to all of them.
+
+\subsection{Selection rationale}
+\begin{itemize}
+  \item \key{Baseline:} ordinary Newton--Raphson, to anchor every
+        comparison against the textbook method.
+  \item \key{Established Kepler-specific solvers:} two variants that are
+        already used or benchmarked against in the Kepler-equation
+        literature, representing the current practical standard rather
+        than a strawman.
+  \item \key{Recent with-memory variants (2024--2025):} two multipoint
+        Newton-type schemes that raise convergence order via
+        Hermite-interpolated self-accelerating parameters, at no
+        additional evaluation points per iteration.
+  \item \key{Initial-guess layer:} a symbolic-regression-derived starting
+        formula, applied in front of every iterative solver above,
+        isolated as its own experimental factor.
+\end{itemize}
+
+\subsection{Method table}
+\begingroup
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.05cm} >{\raggedright\arraybackslash}p{3.55cm} >{\raggedright\arraybackslash}p{1.1cm} >{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Category} & \textbf{Method} & \textbf{Order} & \textbf{Role in the benchmark} \\
+\midrule
+Baseline & Newton--Raphson & 2 & Textbook anchor; one evaluation point, full $\sin,\cos$ pair per iteration. \\[0.5em]
+\multirow{2}{2.05cm}{\raggedright Established Kepler solvers}
+ & Danby's method & 4 & RadVel's production solver; already domain-tuned to this equation. \\
+ & Markley's method & \textemdash & Closed-form / near-analytic quartic solver widely cited as a Kepler-specific standard. \\[0.5em]
+\multirow{2}{2.05cm}{\raggedright With-memory (2024--2025)}
+ & NWM9 (Mittal, Panday \& J\"antschi, 2024) & 8.8989 & Single self-accelerating parameter on an optimal 8th-order base; controlled, lower-order sibling of NWM11. \\
+ & NWM11 (Mittal, Panday, J\"antschi \& Bolundu\c{t}, 2025) & 10.7446 & Bi-parametric variant; primary "recent" candidate --- 3 evaluation points, only 1 full $\sin,\cos$ pair per iteration. \\[0.5em]
+Guess layer & Napier's guess (2024, arXiv:2411.15374) & n/a & Symbolic-regression starting formula; drop-in replacement for the simple/canonical/RadVel starts, used in front of every solver above. \\
+\bottomrule
+\end{tabularx}
+\endgroup
+
+\vspace{0.4em}
+\begin{note}
+Two established, two new, and one baseline gives every iterative solver a
+same-size comparison group, while the guess-layer factor is deliberately
+kept independent so that "better start" and "better iteration" are never
+conflated in the results.
+\end{note}
+
+% =========================================================================
+\section{Evaluation Framework}
+
+\subsection{Kepler-specific cost accounting}
+Raw convergence order is not, by itself, a fair currency for comparing
+these methods on this particular equation. A single \texttt{sincos} call
+returns $\sin E$ and $\cos E$ together at roughly the cost of one
+transcendental evaluation, so a scheme that needs both quantities at one
+point is markedly cheaper than one that needs $\sin$ and $\cos$ at two
+different points. Every method above will therefore be costed by:
+\begin{enumerate}
+  \item the number of \emph{distinct} evaluation points used per
+        iteration;
+  \item how many of those points require a full $\sin,\cos$ pair versus
+        $\sin$ (or $\cos$) alone; and
+  \item whether any derivative at a new point is synthesised from
+        divided-difference / Hermite machinery instead of a fresh
+        transcendental call.
+\end{enumerate}
+
+\subsection{Benchmark grid}
+Each solver--guess combination will be run over a broad $(e,M)$ grid,
+including the ordinary operating region of typical radial-velocity fits
+and the classical pathological corner --- high eccentricity, $M$ near
+zero --- where Newton-type iteration for Kepler's equation is known to be
+most fragile.
+
+\subsection{Metrics}
+\begin{itemize}
+  \item \key{Empirical convergence order}, measured directly from the
+        residual sequence rather than taken on faith from the source
+        paper.
+  \item \key{Iterations to tolerance} and \key{wall-clock time} per
+        solve, and per full RadVel fit.
+  \item \key{Residual and reference-solution error} against a
+        high-precision root.
+  \item \key{Robustness}: failure or non-convergence rate across the
+        $(e,M)$ grid.
+  \item \key{Downstream effect}: propagation of solver error through
+        $M \rightarrow E \rightarrow \nu \rightarrow v_r$ into the fitted
+        parameters $P$, $e$, and $K$, and comparison against RadVel's MCMC
+        posterior scale.
+\end{itemize}
+
+% =========================================================================
+\section{Work Plan}
+
+\begin{enumerate}
+  \item \textbf{Implementation.} Re-derive and implement all five solvers
+        and the Napier guess in a common scalar-arithmetic framework,
+        instrumented to record evaluation-point-level cost, not just
+        iteration count.
+  \item \textbf{Verification.} Validate each implementation against its
+        source paper's reported convergence order on a small controlled
+        test set before running the full grid.
+  \item \textbf{Grid benchmark.} Run every solver--guess combination
+        across the $(e,M)$ grid; record all metrics in
+        Section~4.3.
+  \item \textbf{Error propagation study.} Vary solver tolerance and trace
+        the resulting error through to refit orbital parameters on a real
+        radial-velocity dataset.
+  \item \textbf{Monte Carlo uncertainty comparison.} Generate noisy
+        realisations of the same dataset, refit, and compare
+        measurement-noise-driven parameter spread against solver-induced
+        shifts and RadVel's MCMC posterior.
+  \item \textbf{Synthesis.} Report where each method category wins,
+        loses, or ties, once Kepler-specific evaluation cost is
+        accounted for.
+\end{enumerate}
+
+% =========================================================================
+\section{Expected Outcomes}
+
+\begin{itemize}
+  \item A reusable, cost-instrumented benchmark harness comparing
+        classical, domain-specialised, and 2024--2025 with-memory
+        Newton-type solvers on Kepler's equation specifically.
+  \item An empirical answer --- not an assumed one --- to whether the
+        higher formal order of recent with-memory schemes survives
+        contact with Kepler's specific $\sin,\cos$ cost structure and
+        RadVel's real operating range of $(e,M)$.
+  \item A quantified picture of how solver-level numerical error
+        propagates into fitted orbital parameters, set against RadVel's
+        own MCMC uncertainty for context.
+\end{itemize}
+
+\vspace{1.4em}
+\dividerline
+
+\section*{References}
+\begingroup
+\small
+\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em, itemsep=0.7em]
+
+  \item B. J. Fulton, E. A. Petigura, S. Blunt, and E. Sinukoff,
+  ``RadVel: The Radial Velocity Fitting Toolkit,''
+  \textit{Publications of the Astronomical Society of the Pacific},
+  vol. 130, no. 986, p. 044504, 2018.
+  doi: \href{https://doi.org/10.1088/1538-3873/aaaaa8}
+  {10.1088/1538-3873/aaaaa8}.
+
+  \item J. M. A. Danby,
+  ``The solution of Kepler's equation. I,''
+  \textit{Celestial Mechanics},
+  vol. 40, nos. 3--4, pp. 303--312, 1987.
+  doi: \href{https://doi.org/10.1007/BF01230252}
+  {10.1007/BF01230252}.
+
+  \item F. L. Markley,
+  ``Kepler's Equation Solver,''
+  \textit{Celestial Mechanics and Dynamical Astronomy},
+  vol. 63, no. 1, pp. 101--111, 1995.
+  doi: \href{https://doi.org/10.1007/BF00691917}
+  {10.1007/BF00691917}.
+
+  \item R. Mittal, A. Panday, and L. J{\"a}ntschi,
+  ``An Optimal Higher-Order Derivative-Free with-Memory Iterative Scheme
+  for Solving Nonlinear Equations,''
+  \textit{Symmetry},
+  vol. 16, no. 5, p. 588, 2024.
+  doi: \href{https://doi.org/10.3390/sym16050588}
+  {10.3390/sym16050588}.
+
+  \item R. Mittal, A. Panday, L. J{\"a}ntschi, and L.-M. Bolundu{\c{t}},
+  ``High-Efficiency With-Memory Iterative Solvers for Nonlinear Equations:
+  Development, Theoretical Analysis, and Numerical Validation,''
+  \textit{Mathematics},
+  vol. 13, no. 2, p. 245, 2025.
+  doi: \href{https://doi.org/10.3390/math13020245}
+  {10.3390/math13020245}.
+
+  \item K. Napier,
+  ``Analytic Starting Guesses for Kepler's Equation via Symbolic Regression,''
+  \textit{arXiv preprint arXiv:2411.15374}, 2024.
+  doi: \href{https://doi.org/10.48550/arXiv.2411.15374}
+  {10.48550/arXiv.2411.15374}.
+
+\end{enumerate}
+\endgroup
+```
+
+\end{document}
