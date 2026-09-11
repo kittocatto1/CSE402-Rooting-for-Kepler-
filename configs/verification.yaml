@@ -1,0 +1,20 @@
+# Work Plan step 2 - validate each implementation against its source paper.
+# Owner: Suchi.
+name: verification
+
+solvers: [newton, danby, nwm9, nwm11]   # markley has no asymptotic order
+guesses: [simple]
+
+# tol = 0 forces the loop to run exactly max_iter iterations, which is what
+# the convergence-order estimator needs (no early exit).
+tol: 0.0
+max_iter: 8
+record_history: true
+use_reference: true
+
+extra:
+  # TODO(Suchi): the order estimate needs more than double precision for the
+  # high-order methods. Set this once the mpmath verification path exists.
+  working_precision_dps: 100
+  # Small controlled Kepler set used by verify_kepler_correctness.
+  kepler_check_points: 5000

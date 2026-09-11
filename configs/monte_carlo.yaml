@@ -1,0 +1,14 @@
+# Work Plan step 5 - measurement-noise scatter vs solver-induced shift.
+# Owner: Fariha.
+name: monte_carlo
+
+solvers: [danby]            # one fixed solver at tight tolerance
+guesses: [canonical]
+tol: 1.0e-14
+max_iter: 50
+seed: 0
+
+extra:
+  dataset: null             # must match error_propagation.yaml
+  n_realisations: 50        # start here to debug, raise for the real run
+  include_jitter: true

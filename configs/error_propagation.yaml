@@ -1,0 +1,19 @@
+# Work Plan step 4 - solver tolerance -> fitted orbital parameters.
+# Owner: Fariha.
+name: error_propagation
+
+solvers: [newton, danby, markley, nwm9, nwm11]
+guesses: [canonical]
+
+max_iter: 50
+seed: 0
+
+extra:
+  # TODO(Fariha): fill in once the dataset is chosen, and cite it in the report.
+  dataset: null
+  tolerance_sweep: [1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10, 1.0e-12, 1.0e-14]
+  reference_tolerance: 1.0e-14
+  # One MCMC run supplies the posterior widths; the tolerance sweep uses
+  # maximum-likelihood fits only.
+  run_mcmc: true
+  mcmc_steps: null          # TODO(Fariha): choose and record

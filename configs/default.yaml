@@ -1,0 +1,15 @@
+# Shared defaults. Experiment configs override what they need.
+# Owner: Anisa (schema), everyone (their own experiment's block).
+
+name: default
+
+solvers: [newton, danby, markley, nwm9, nwm11]
+guesses: [simple, canonical, radvel, napier]
+
+tol: 1.0e-14
+max_iter: 50
+record_history: false
+use_reference: true
+timing_repeats: 1000
+seed: 0
+output_dir: results

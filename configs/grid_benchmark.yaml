@@ -1,0 +1,36 @@
+# Work Plan step 3 - the main experiment.
+# Owner: Mahdi.
+name: grid_benchmark
+
+solvers: [newton, danby, markley, nwm9, nwm11]
+guesses: [simple, canonical, radvel, napier]
+
+tol: 1.0e-14
+max_iter: 50
+record_history: false     # too much memory for the full grid
+use_reference: true
+timing_repeats: 1000
+seed: 0
+
+grid:
+  type: combined          # uniform + pathological + radvel operating region
+  uniform:
+    n_e: 50
+    n_M: 100
+    e_max: 0.99
+  pathological:
+    n_e: 20
+    n_M: 20
+    e_min: 0.9
+    M_max: 0.1
+  radvel:
+    n_samples: 2000
+
+extra:
+  # A small sub-grid run WITH history, for the convergence figures.
+  history_subgrid:
+    e: [0.0, 0.3, 0.6, 0.9, 0.99]
+    M: [0.001, 0.1, 1.0, 3.0]
+  # Points used for the wall-clock timing loop (timing the full grid is
+  # far too slow and is not needed).
+  timing_points: 50
