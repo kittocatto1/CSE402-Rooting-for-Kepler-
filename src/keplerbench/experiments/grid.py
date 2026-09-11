@@ -17,6 +17,8 @@ Owner: Mahdi.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 
@@ -27,11 +29,15 @@ def uniform_grid(n_e: int = 50, n_M: int = 100,
     M is restricted to [0, pi] because Kepler's equation is symmetric about
     M = pi; covering the full circle would only duplicate work.
 
-    TODO(Mahdi): build with np.linspace and return a list of (e, M) tuples.
-    Decide and document whether the endpoints e = 0 and M = 0 are included -
-    both are degenerate (E = M exactly) and can flatter a solver.
+    Both degenerate endpoints are INCLUDED: e = 0 and M = 0 give E = M
+    exactly, so every solver converges there in one step or none.  They are
+    kept because they are a cheap correctness check (any solver that misses
+    them is broken), and excluded from the headline averages downstream
+    instead - see evaluation/robustness.py region splits.
     """
-    raise NotImplementedError("uniform_grid: see TODO above")
+    es = np.linspace(0.0, e_max, n_e)
+    Ms = np.linspace(0.0, math.pi, n_M)
+    return [(float(e), float(M)) for e in es for M in Ms]
 
 
 def pathological_grid(n_e: int = 20, n_M: int = 20,
@@ -39,37 +45,67 @@ def pathological_grid(n_e: int = 20, n_M: int = 20,
                       ) -> list[tuple[float, float]]:
     """Dense sampling of the hard corner: e -> 1, M -> 0.
 
-    TODO(Mahdi): use LOGARITHMIC spacing in (1 - e) and in M, e.g.
-    1 - e from 1e-1 down to 1e-4 and M from 1e-1 down to 1e-6. Linear
-    spacing here wastes almost all the points far from the corner.
+    Logarithmic in both (1 - e) and M: (1 - e) from (1 - e_min) down to 1e-4
+    and M from M_max down to 1e-6.  Linear spacing here would put nearly
+    every point far from the corner, which is the whole thing we are trying
+    to resolve.
     """
-    raise NotImplementedError("pathological_grid: see TODO above")
+    one_minus_e = np.logspace(math.log10(1.0 - e_min), -4.0, n_e)
+    Ms = np.logspace(math.log10(M_max), -6.0, n_M)
+    return [(float(1.0 - u), float(M)) for u in one_minus_e for M in Ms]
 
 
 def radvel_operating_grid(n_samples: int = 2000, seed: int = 0
                           ) -> list[tuple[float, float]]:
     """(e, M) drawn from the distribution a real RadVel fit actually visits.
 
-    TODO(Mahdi):
-      1. Sample M uniform on [0, 2*pi) - during an MCMC run, phase is
-         essentially uniform.
-      2. Sample e from the eccentricity prior / observed distribution used
-         for RV planets rather than uniform on [0, 1). Write down in this
-         docstring which distribution you used and why (a Beta distribution
-         fitted to known RV eccentricities is the usual choice).
-      3. Seed the RNG from the argument so the grid is reproducible.
+    M is uniform on [0, 2*pi): during an MCMC run the orbital phase visited
+    is essentially uniform.
+
+    e is drawn from Beta(0.867, 3.03), the eccentricity distribution Kipping
+    (2013, MNRAS 434, L51) fitted to the RV exoplanet sample and the prior
+    RadVel-style fits commonly adopt.  It concentrates near e ~ 0.1-0.2 with
+    a thin tail to high e, which is what real fits see - a uniform e would
+    over-weight orbits that barely exist.
     """
-    raise NotImplementedError("radvel_operating_grid: see TODO above")
+    rng = np.random.default_rng(seed)
+    Ms = rng.uniform(0.0, 2.0 * math.pi, size=n_samples)
+    es = rng.beta(0.867, 3.03, size=n_samples)
+    return [(float(e), float(M)) for e, M in zip(es, Ms)]
 
 
 def build_grid(spec: dict) -> list[tuple[float, float]]:
     """Dispatch on a config's ``grid:`` block.
 
-    Accepted keys (extend as needed, and document here):
-        type: "uniform" | "pathological" | "radvel" | "combined"
-        plus whatever that grid function takes.
+    Accepted keys::
 
-    TODO(Mahdi): implement the dispatch; for "combined", concatenate the
-    three grids and de-duplicate.
+        type: "uniform" | "pathological" | "radvel" | "combined"
+        uniform:      {n_e, n_M, e_max}          # kwargs for uniform_grid
+        pathological: {n_e, n_M, e_min, M_max}
+        radvel:       {n_samples, seed}
+
+    "combined" concatenates all three and de-duplicates, keeping the order
+    the points were generated in so a ``--limit`` smoke run still covers the
+    uniform region first.
     """
-    raise NotImplementedError("build_grid: see TODO above")
+    builders = {
+        "uniform": uniform_grid,
+        "pathological": pathological_grid,
+        "radvel": radvel_operating_grid,
+    }
+    kind = spec.get("type", "uniform")
+    if kind == "combined":
+        names = list(builders)
+    elif kind in builders:
+        names = [kind]
+    else:
+        raise ValueError(f"unknown grid type {kind!r}; known: {sorted(builders)} + 'combined'")
+
+    points: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+    for name in names:
+        for pt in builders[name](**spec.get(name, {})):
+            if pt not in seen:
+                seen.add(pt)
+                points.append(pt)
+    return points
