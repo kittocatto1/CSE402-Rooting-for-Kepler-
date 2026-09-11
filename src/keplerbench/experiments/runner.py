@@ -10,11 +10,18 @@ Owner: Mahdi.
 
 from __future__ import annotations
 
+import time
+import warnings
+from statistics import median
 from typing import Iterable, Sequence
 
 from keplerbench.core.base import InitialGuess, KeplerSolver
 from keplerbench.core.registry import get_guess, get_solver
 from keplerbench.core.types import KeplerProblem, SolveResult
+
+#: Solvers that build their answer from a closed form and ignore E0.
+#: Run once under the pseudo-guess label "n/a" - see run_sweep.
+GUESS_INDEPENDENT = {"markley"}
 
 
 def solve_one(
@@ -55,24 +62,60 @@ def run_sweep(
     max_iter: int = 50,
     record_history: bool = False,
     reference_roots: dict[tuple[float, float], float] | None = None,
+    progress_every: int = 500,
 ) -> list[SolveResult]:
     """Cross every solver with every guess over every (e, M) point.
 
-    TODO(Mahdi):
-      1. Instantiate each solver and guess ONCE via get_solver / get_guess
-         (not inside the loop - object creation would pollute the timing).
-      2. Triple loop: for each point, for each guess, for each solver, call
-         solve_one and collect the result.
-      3. Look up the reference root from ``reference_roots`` when given.
-      4. Catch NotImplementedError per (solver, guess) and skip that
-         combination with a warning, so a half-finished solver does not stop
-         the whole sweep while the team is still working in parallel.
-      5. Show progress - the full grid is large; print every N points.
-      6. Special case: Markley ignores the guess. Run it under a single
-         pseudo-guess label "n/a" instead of once per guess, so the tables do
-         not show five identical Markley rows. See README.
+    A solver whose ``step`` is still a skeleton raises NotImplementedError;
+    that combination is warned about once and skipped, so the sweep keeps
+    working while the team is still writing solvers in parallel.
+
+    Closed-form solvers (see ``GUESS_INDEPENDENT``) ignore the starting
+    guess, so they are run ONCE under the pseudo-guess label "n/a" instead of
+    once per guess - otherwise the tables carry four identical rows.
     """
-    raise NotImplementedError("run_sweep: see TODO above")
+    solvers = {name: get_solver(name) for name in solver_names}
+    guesses = {name: get_guess(name) for name in guess_names}
+    if not guesses:
+        raise ValueError("run_sweep needs at least one guess")
+    # Closed-form solvers still need *some* E0 to satisfy the interface.
+    fallback_guess = next(iter(guesses.values()))
+
+    results: list[SolveResult] = []
+    broken: set[tuple[str, str]] = set()
+
+    for i, (e, M) in enumerate(points, start=1):
+        E_reference = None if reference_roots is None else reference_roots.get((e, M))
+        for solver_name, solver in solvers.items():
+            if solver_name in GUESS_INDEPENDENT:
+                pairs = [("n/a", fallback_guess)]
+            else:
+                pairs = list(guesses.items())
+            for guess_label, guess in pairs:
+                key = (solver_name, guess_label)
+                if key in broken:
+                    continue
+                try:
+                    r = solve_one(
+                        solver, guess, e, M,
+                        tol=tol,
+                        max_iter=max_iter,
+                        record_history=record_history,
+                        E_reference=E_reference,
+                    )
+                except NotImplementedError as exc:
+                    broken.add(key)
+                    warnings.warn(
+                        f"skipping {solver_name}+{guess_label}: not implemented yet ({exc})",
+                        stacklevel=2,
+                    )
+                    continue
+                r.guess = guess_label
+                results.append(r)
+        if progress_every and i % progress_every == 0:
+            print(f"  run_sweep: {i} points, {len(results)} rows", flush=True)
+
+    return results
 
 
 def time_solve(
@@ -89,15 +132,19 @@ def time_solve(
     ``SolveResult.wall_time`` from a single solve is far too noisy to report.
     Use this for the wall-clock metric in Section 4.3.
 
-    TODO(Mahdi):
-      1. Warm up (a few untimed solves) so the first-call overhead and any
-         caching are out of the way.
-      2. Time ``repeats`` solves with time.perf_counter_ns, with
-         record_history=False (recording allocates and would dominate).
-      3. Return the MEDIAN per-solve time, not the mean - one OS hiccup
-         should not decide which solver "wins".
-      4. Note in the results that timing is machine-dependent; the cost
-         counters from Section 4.1 are the machine-independent measure and
-         should be the headline number in the report.
+    Wall-clock is MACHINE-DEPENDENT and must be reported as such; the cost
+    counters of Section 4.1 are the machine-independent measure and stay the
+    headline number.  History recording is forced off - it allocates per
+    iteration and would dominate the timing.
     """
-    raise NotImplementedError("time_solve: see TODO above")
+    warmup = max(1, repeats // 100)
+    for _ in range(warmup):
+        solve_one(solver, guess, e, M, tol=tol, max_iter=max_iter)
+
+    samples = []
+    for _ in range(repeats):
+        t0 = time.perf_counter_ns()
+        solve_one(solver, guess, e, M, tol=tol, max_iter=max_iter)
+        samples.append(time.perf_counter_ns() - t0)
+    # Median, not mean: one OS hiccup must not decide which solver wins.
+    return median(samples) * 1e-9
