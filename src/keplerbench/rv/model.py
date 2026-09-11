@@ -7,6 +7,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
+from keplerbench.core.registry import get_guess, get_solver
+from keplerbench.experiments.runner import solve_one
+from keplerbench.rv.anomaly import mean_anomaly, radial_velocity, true_anomaly
+
 
 @dataclass
 class OrbitParams:
@@ -21,26 +27,40 @@ class OrbitParams:
 
 
 def rv_curve(times, params: OrbitParams, solver_name: str = "danby",
-             guess_name: str = "canonical", tol: float = 1e-14):
+             guess_name: str = "canonical", tol: float = 1e-14,
+             cost_out: dict[str, int] | None = None) -> np.ndarray:
     """Model radial velocities at ``times`` using OUR solver, not RadVel's.
 
-    TODO(Fariha):
-      1. For each time: M = mean_anomaly(t, P, tp).
-      2. Solve Kepler with the named solver/guess via
-         experiments.runner.solve_one - going through the shared pipeline
-         keeps the cost accounting valid here too.
-      3. nu = true_anomaly(E, e); v = radial_velocity(nu, K, e, omega, gamma).
-      4. Return a numpy array.
-      5. Record total solver cost for the whole curve - "cost per full RV
-         fit" is one of the metrics in Section 4.3.
+    Goes through ``experiments.runner.solve_one`` for every point, so this
+    curve is subject to the exact same cost accounting and stopping rule as
+    the rest of the benchmark - no shortcuts.  Pass ``cost_out`` (a fresh
+    dict) to also collect the total solver cost for the whole curve - "cost
+    per full RV fit" is one of the metrics in Section 4.3.
     """
-    raise NotImplementedError("rv_curve: see TODO above")
+    solver = get_solver(solver_name)
+    guess = get_guess(guess_name)
+
+    velocities = np.empty(len(times), dtype=float)
+    total_cost: dict[str, int] = {}
+    for i, t in enumerate(times):
+        M = mean_anomaly(t, params.P, params.tp)
+        result = solve_one(solver, guess, params.e, M, tol=tol)
+        nu = true_anomaly(result.E, params.e)
+        velocities[i] = radial_velocity(nu, params.K, params.e, params.omega,
+                                        params.gamma)
+        for key, value in result.cost.items():
+            total_cost[key] = total_cost.get(key, 0) + value
+
+    if cost_out is not None:
+        cost_out.update(total_cost)
+    return velocities
 
 
 def chi_squared(times, velocities, errors, params: OrbitParams, **solver_kw) -> float:
     """Standard chi^2 of the model against the data.
 
-    TODO(Fariha): sum(((v_obs - v_model) / sigma)**2). Used by the
-    maximum-likelihood fits in the error-propagation study.
+    Used by the maximum-likelihood fits in the error-propagation study.
     """
-    raise NotImplementedError("chi_squared: see TODO above")
+    model = rv_curve(times, params, **solver_kw)
+    residual = (np.asarray(velocities, dtype=float) - model) / np.asarray(errors, dtype=float)
+    return float(np.sum(residual ** 2))
