@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "keplerbench"
+version = "0.1.0"
+description = "Rooting for Kepler - a comparative benchmark of Newton-type root finders and starting guesses"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "mpmath>=1.3",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# radvel is only needed for the downstream (Section 5.4 / 5.5) experiments.
+rv = ["radvel>=1.4", "emcee>=3.1"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+
+[project.scripts]
+keplerbench = "keplerbench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

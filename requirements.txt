@@ -1,0 +1,14 @@
+# Core benchmark dependencies
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+matplotlib>=3.7
+mpmath>=1.3
+pyyaml>=6.0
+
+# Testing
+pytest>=7.4
+
+# Downstream RV experiments only (Work Plan steps 4 and 5).
+# Install separately if radvel is hard to build on your machine:
+#   pip install radvel emcee

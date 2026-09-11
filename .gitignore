@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Generated outputs - never commit result files, they are reproducible.
+results/**
+!results/.gitkeep
+figures/
+data/raw/**
+!data/raw/.gitkeep
