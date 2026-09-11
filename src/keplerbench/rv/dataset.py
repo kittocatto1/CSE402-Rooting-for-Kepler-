@@ -10,23 +10,37 @@ from pathlib import Path
 import pandas as pd
 
 
+#: name -> (raw column -> canonical column) rename map, plus a fixed
+#: telescope label when the raw file does not record one (single-instrument
+#: datasets only report one, so there is nothing to disambiguate).
+_KNOWN_DATASETS: dict[str, dict] = {
+    "k2-24": {
+        "rename": {"t": "time", "vel": "mnvel"},
+        "tel": "hires",
+    },
+}
+
+
 def load_rv_dataset(name: str) -> pd.DataFrame:
     """Return a DataFrame with columns: time, mnvel, errvel, tel.
 
-    TODO(Fariha):
-      1. Pick ONE published RV dataset and commit to it. A system with a
-         moderately eccentric orbit is the informative choice - a circular
-         orbit makes the Kepler solver almost irrelevant and the whole
-         propagation study would measure nothing.
-      2. RadVel ships example datasets (radvel.utils / the example_data
-         folder) - using one of those is the lowest-friction option and
-         makes our numbers reproducible by anyone with radvel installed.
-      3. Put raw files in data/raw/ (git-ignored) and document in
-         data/README.md where to download them from. Do NOT commit the data.
-      4. Record the source, the instrument(s) and the number of points in
-         the docstring - the report has to cite it.
+    Currently backed by ``k2-24`` (EPIC 203771098): 32 HIRES radial-velocity
+    points for a two-planet sub-Saturn system. See ``data/README.md`` for
+    provenance and citation. This is a moderately eccentric, multi-planet
+    system, so the Kepler solver's accuracy is not irrelevant to the fit the
+    way it would be for a circular orbit.
     """
-    raise NotImplementedError("load_rv_dataset: see TODO above")
+    key = name[:-4] if name.endswith(".csv") else name
+    if key not in _KNOWN_DATASETS:
+        raise KeyError(f"unknown RV dataset {name!r}; known: {sorted(_KNOWN_DATASETS)}")
+    spec = _KNOWN_DATASETS[key]
+
+    path = dataset_path(f"{key}.csv")
+    df = pd.read_csv(path, index_col=0)
+    df = df.rename(columns=spec["rename"])
+    if "tel" not in df.columns:
+        df["tel"] = spec["tel"]
+    return df[["time", "mnvel", "errvel", "tel"]].reset_index(drop=True)
 
 
 def dataset_path(name: str) -> Path:
