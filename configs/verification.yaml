@@ -13,8 +13,12 @@ record_history: true
 use_reference: true
 
 extra:
-  # TODO(Suchi): the order estimate needs more than double precision for the
-  # high-order methods. Set this once the mpmath verification path exists.
-  working_precision_dps: 100
+  # The order estimate needs far more than double precision for the
+  # high-order methods: an order-9 method passes 1e-9, 1e-81, 1e-729 in three
+  # steps, and the estimator needs three usable errors for one estimate.
+  # Calibrated on NWM9 - at 100 dps the measured order comes out anywhere in
+  # 8.87-10.19 (only 3 usable terms); at 2000 it settles to 8.87-8.98 against
+  # a claim of 8.8989, and 3000 buys nothing. Costs ~2 s for the whole set.
+  working_precision_dps: 2000
   # Small controlled Kepler set used by verify_kepler_correctness.
   kepler_check_points: 5000

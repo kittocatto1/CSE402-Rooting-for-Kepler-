@@ -13,3 +13,12 @@ results/**
 figures/
 data/raw/**
 !data/raw/.gitkeep
+
+# Source papers - not redistributable, and not ours to republish. The two
+# MDPI/AIMS ones are CC-BY and could legally be committed, but Danby (1987)
+# and Markley (1995) are Springer and Fulton (2018) is IOP, so a blanket rule
+# is safer than a per-file one nobody remembers to apply.
+# Every DOI is recorded in papers/README.md, which IS committed, so the
+# downloads stay reproducible the way data/README.md does it for datasets.
+papers/**
+!papers/README.md
