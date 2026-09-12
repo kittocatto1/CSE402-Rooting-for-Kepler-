@@ -179,39 +179,90 @@ def test_nwm9_memoryless_base_is_order_eight():
         assert row["measured_order"] == pytest.approx(8.0, abs=1e-3), row
 
 
-def test_nwm9_z_step_matches_the_papers_error_constant():
-    """Pin the one transcription the PDF renders ambiguously.
+# ----------------------------------------------------------------------
+# Error-constant guards.
+#
+# These pin the transcriptions the PDFs render ambiguously. Measuring the
+# convergence order does NOT pin them: several misreadings of both schemes
+# still converge at order 8, so order agreement proves almost nothing. The
+# papers' error CONSTANTS do discriminate - a wrong grouping in NWM11's
+# w'(t_k) missed the e^8 constant by about 60 orders of magnitude while
+# still being an order-8 method.
+#
+# They drive the shipped solver modules through GenericProblem for exactly
+# one step, so a change to nwm9.py or nwm11.py breaks them. An earlier
+# version recomputed the algebra inline and would have passed no matter what
+# those files did - a guard that guards nothing.
+# ----------------------------------------------------------------------
+CONSTANT_DPS = 400
+#: Start this far from the root. The e^8 term is then 1e-192, while the
+#: O(e^9) remainder is 1e-216 - so the measured constant is good to ~1e-24
+#: and the tolerance below is not fighting truncation error.
+CONSTANT_OFFSET = mp.mpf(10) ** -24
+#: Worst observed across both solvers and all eight functions is 3.6e-22.
+CONSTANT_TOL = mp.mpf("1e-20")
 
-    The z sub-step contains a nested fraction whose text layer admits several
-    readings, and MORE THAN ONE of them yields order 8 - so measuring the
-    order cannot distinguish them. The paper's Eq. (6) gives the error
-    constant explicitly,
 
-        e_z = c2 (c2 + 5 c2^2 - c3) e^4 + O(e^5),
+def _paper_functions():
+    from keplerbench.experiments.verification import PAPER_TEST_FUNCTIONS
 
-    and that does distinguish them. Guard it, because a wrong-but-order-8
-    base would then fail to reach 8.8989 with memory and the cause would be
-    extremely hard to find.
+    return PAPER_TEST_FUNCTIONS
+
+
+def _first_step_constant(solver, f, xi):
+    """(x1 - xi) / (x0 - xi)**8 for ONE step of a real solver.
+
+    max_iter=1 with tol=0 forces exactly one iteration, so this is the
+    scheme's own eighth-order error constant and nothing else. The parameter
+    used is whatever the solver itself supplies on a first step, where there
+    is no history yet.
     """
+    from keplerbench.experiments.verification import GenericProblem
+
+    problem = GenericProblem(f, lambda x: mp.diff(f, x, 1), dps=CONSTANT_DPS)
+    E0 = xi + CONSTANT_OFFSET
+    result = solver.solve(problem, E0=E0, tol=mp.mpf(0), max_iter=1,
+                          record_history=True, E_reference=xi)
+    return (result.E - xi) / (E0 - xi) ** 8
+
+
+def _taylor_coefficients(f, xi):
+    """c_j = f^(j)(xi) / (j! f'(xi)), the papers' notation."""
+    A = mp.diff(f, xi, 1)
+    return {j: mp.diff(f, xi, j) / (mp.factorial(j) * A) for j in (2, 3, 4)}
+
+
+@pytest.mark.parametrize("index", range(8))
+def test_nwm9_first_step_matches_the_papers_error_constant(index):
+    """NWM9 Eq. (7), on the shipped solver with its shipped ALPHA_0.
+
+        e_{n+1} = c2^2 K [ (alpha + c2) K + c4 ] e^8 + O(e^9),
+        K = c2 + 5 c2^2 - c3
+
+    Nothing is stubbed out here: this is nwm9.py exactly as it ships, so the
+    test also pins ALPHA_0 being wired into the third step. The formula's
+    alpha-dependence is independently corroborated by the paper's own limit
+    condition - the coefficient vanishes at alpha = -c2 - c4/K, which is
+    precisely the limit Section 2 states for alpha_n.
+    """
+    from keplerbench.experiments.verification import refine_root
+    from keplerbench.core.registry import get_solver
+    from keplerbench.solvers.nwm9 import ALPHA_0
+
+    name, f, published, _ = _paper_functions()[index]
     with skip_if_unimplemented():
-        with mp.workdps(120):
-            f = lambda x: x**3 + 4 * x**2 - 10
-            fp = lambda x: 3 * x**2 + 8 * x
-            xi = mp.findroot(f, mp.mpf("1.36"))
-            A = fp(xi)
-            c2 = mp.diff(f, xi, 2) / (mp.factorial(2) * A)
-            c3 = mp.diff(f, xi, 3) / (mp.factorial(3) * A)
-            expected = c2 * (c2 + 5 * c2**2 - c3)
+        with mp.workdps(CONSTANT_DPS):
+            xi = refine_root(f, published, dps=CONSTANT_DPS)
+            c = _taylor_coefficients(f, xi)
+            K = c[2] + 5 * c[2] ** 2 - c[3]
+            expected = c[2] ** 2 * K * ((mp.mpf(ALPHA_0) + c[2]) * K + c[4])
 
-            x = xi + mp.mpf("1e-12")
-            fx, fpx = f(x), fp(x)
-            t = fx / fpx
-            y = x - t
-            u = f(y) / fx
-            z = x - t * (1 + u + (1 + 1 / (1 + t)) * u * u)
-
-            measured = (z - xi) / (x - xi) ** 4
-            assert abs(measured - expected) / abs(expected) < mp.mpf("1e-6")
+            measured = _first_step_constant(get_solver("nwm9"), f, xi)
+            relative = abs(measured - expected) / abs(expected)
+            assert relative < CONSTANT_TOL, (
+                f"{name}: measured {mp.nstr(measured, 12)} vs predicted "
+                f"{mp.nstr(expected, 12)} (relative {mp.nstr(relative, 4)})"
+            )
 
 
 def test_nwm11_memoryless_base_is_order_eight():
@@ -242,50 +293,94 @@ def test_nwm11_memoryless_base_is_order_eight():
         assert row["measured_order"] == pytest.approx(8.0, abs=1e-3), row
 
 
-def test_nwm11_base_matches_the_papers_error_constants():
-    """Pin w'(t_k) and R(s_k, v_k), which the PDF renders ambiguously.
+@pytest.mark.parametrize("index", range(8))
+def test_nwm11_first_step_matches_the_papers_error_constant(index):
+    """NWM11 Eq. (2.6), driving nwm11.py with both parameters held at zero.
 
-    Eqs (2.4)-(2.6) with alpha = beta = 0 give three independent constants:
+        e_{k+1} = (alpha + c2)^2 c3 (c2 c3 - c4) e^8 + O(e^9)
 
-        e_v     = c2 e^2
-        e_t     = -c2 c3 e^4
-        e_next  = c2^2 c3 (c2 c3 - c4) e^8
+    Only the two parameter getters are overridden; every line of arithmetic -
+    q(v_k), R(s_k,v_k), w'(t_k) and the three sub-steps - is the shipped
+    code. Those three auxiliaries are exactly what the PDF renders
+    ambiguously, and this single constant pins all of them at once: the wrong
+    w' groupings are out by ~60 orders of magnitude here.
 
-    Three groupings of w' all produce a plausible-looking scheme; only one
-    reproduces the e^8 constant, and the wrong ones miss it by 60 orders of
-    magnitude. Order alone would not have caught it.
+    Held at zero rather than at the shipped values because Eq. (2.6) is the
+    UNI-parametric constant. beta also enters at e^8 in the bi-parametric
+    scheme (2.33) - see the test below - so comparing the shipped solver
+    against (2.6) would only agree to O(beta_0), which is far too loose to
+    catch a transcription error.
     """
+    from keplerbench.experiments.verification import refine_root
+    from keplerbench.solvers.nwm11 import NWM11Solver
+
+    class MemorylessNWM11(NWM11Solver):
+        def _alpha(self, *args, **kwargs):
+            return mp.mpf(0), None
+
+        def _beta(self, *args, **kwargs):
+            return mp.mpf(0)
+
+    name, f, published, _ = _paper_functions()[index]
     with skip_if_unimplemented():
-        with mp.workdps(150):
-            f = lambda x: x**3 + 4 * x**2 - 10
-            fp = lambda x: 3 * x**2 + 8 * x
-            xi = mp.findroot(f, mp.mpf("1.36"))
-            A = fp(xi)
-            c2 = mp.diff(f, xi, 2) / (mp.factorial(2) * A)
-            c3 = mp.diff(f, xi, 3) / (mp.factorial(3) * A)
-            c4 = mp.diff(f, xi, 4) / (mp.factorial(4) * A)
+        with mp.workdps(CONSTANT_DPS):
+            xi = refine_root(f, published, dps=CONSTANT_DPS)
+            c = _taylor_coefficients(f, xi)
+            expected = c[2] ** 2 * c[3] * (c[2] * c[3] - c[4])
 
-            s = xi + mp.mpf("1e-12")
-            e = s - xi
-            fs, fps = f(s), fp(s)
-            v = s - fs / fps                       # alpha = 0
-            fv = f(v)
-            d_vs = (fv - fs) / (v - s)
-            q = 2 * d_vs - fps
-            R = 2 * (fps - d_vs) / (s - v)
-            core = 4 * q**4 - 4 * fv * q**2 * R + fv**2 * R**2
-            t = v - fv / q - (2 * fv**2 * q * R) / core
-            ft = f(t)
-            d_ts = (ft - fs) / (t - s)
-            w = (d_ts * (2 + (s - t) / (v - t))
-                 - (s - t) ** 2 / ((s - v) * (v - t)) * d_vs
-                 + fps * (v - t) / (s - v))
-            s_next = t - ft / w                    # beta = 0
+            measured = _first_step_constant(MemorylessNWM11(), f, xi)
+            relative = abs(measured - expected) / abs(expected)
+            assert relative < CONSTANT_TOL, (
+                f"{name}: measured {mp.nstr(measured, 12)} vs predicted "
+                f"{mp.nstr(expected, 12)} (relative {mp.nstr(relative, 4)})"
+            )
 
-            assert abs((v - xi) / e**2 - c2) / abs(c2) < mp.mpf("1e-6")
-            assert abs((t - xi) / e**4 + c2 * c3) / abs(c2 * c3) < mp.mpf("1e-6")
-            expected = c2**2 * c3 * (c2 * c3 - c4)
-            assert abs((s_next - xi) / e**8 - expected) / abs(expected) < mp.mpf("1e-6")
+
+def test_nwm11_beta_reaches_the_eighth_order_term_linearly():
+    """beta must be wired into the third step, and enter e^8 at first order.
+
+    beta sits in the denominator of the final sub-step, perturbing it by
+    beta*f(t_k) against w' ~ f'(xi). Since f(t_k) ~ e^4, the correction to
+    the iterate is O(beta e^8) - so beta shifts the eighth-order constant
+    itself, linearly and proportionally to beta.
+
+    This is why the test above pins beta at zero: measured against the
+    uni-parametric Eq. (2.6), the shipped solver agrees only to 5e-7..8e-5,
+    which looks like a transcription error and is not one.
+
+    Checking linearity rather than a closed form keeps the test independent
+    of Eq. (2.32), whose e^8 coefficient the PDF renders too poorly to
+    transcribe with confidence.
+    """
+    from keplerbench.experiments.verification import refine_root
+    from keplerbench.solvers.nwm11 import BETA_0, NWM11Solver
+
+    def solver_with_beta(beta):
+        class Pinned(NWM11Solver):
+            def _alpha(self, *args, **kwargs):
+                return mp.mpf(0), None
+
+            def _beta(self, *args, **kwargs):
+                return mp.mpf(beta)
+
+        return Pinned()
+
+    name, f, published, _ = _paper_functions()[0]
+    with skip_if_unimplemented():
+        with mp.workdps(CONSTANT_DPS):
+            xi = refine_root(f, published, dps=CONSTANT_DPS)
+            at_zero = _first_step_constant(solver_with_beta(0), f, xi)
+            at_one = _first_step_constant(solver_with_beta(BETA_0), f, xi)
+            at_two = _first_step_constant(solver_with_beta(2 * BETA_0), f, xi)
+
+            first = at_one - at_zero
+            second = at_two - at_one
+            assert first != 0, "beta never reached the iterate; it is not wired in"
+            # Equal increments for equal steps in beta => linear.
+            assert abs(second - first) / abs(first) < mp.mpf("1e-10"), (
+                f"{name}: beta's effect on the e^8 constant is not linear "
+                f"({mp.nstr(first, 8)} then {mp.nstr(second, 8)})"
+            )
 
 
 @pytest.mark.parametrize("solver_name", ["nwm9", "nwm11"])

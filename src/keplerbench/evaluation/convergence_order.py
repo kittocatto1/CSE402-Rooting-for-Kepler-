@@ -184,7 +184,7 @@ class OrderEstimate:
         return not _isnan(self.value)
 
 
-def _working_floor(scale) -> float:
+def _working_floor(scale, like=None) -> float:
     """Smallest error magnitude that still means something.
 
     Two different limits, whichever is active:
@@ -203,12 +203,52 @@ def _working_floor(scale) -> float:
     8.00 for precisely this reason.
 
     Two digits of guard are left above the limit.
+
+    ``like`` is a sample value from the sequence being measured, used only to
+    pick the arithmetic when ``scale`` cannot supply it.  That matters: a root
+    at exactly zero, or an empty history, used to fall through to a Python
+    ``1`` and hand back a *double-precision* floor of 2.2e-14 even inside a
+    2000-digit context, truncating an mpf error sequence roughly 1980 orders
+    of magnitude too early and reporting the run as unmeasurable.
     """
-    magnitude = abs(scale) if scale else 1
-    if _is_mp(magnitude):
+    working_in_mp = _is_mp(scale) or _is_mp(like)
+    one = mp.mpf(1) if working_in_mp else 1.0
+
+    if scale is None or not _isfinite(scale) or scale == 0:
+        magnitude = one
+    else:
+        magnitude = abs(scale)
+        if working_in_mp and not _is_mp(magnitude):
+            magnitude = mp.mpf(magnitude)
+
+    if working_in_mp:
         return magnitude * mp.mpf(10) ** (-mp.mp.dps + 2)
     # float: 2.22e-16 epsilon, same two digits of guard.
     return float(magnitude) * 2.220446049250313e-14
+
+
+def _reference_scale(iterates: Sequence[float], magnitudes: Sequence[float]):
+    """Best available estimate of |root|, robust to a divergent tail.
+
+    The floor is relative to where the root sits, so it needs |root|.  The
+    obvious proxy - the final iterate - is wrong for any run that converges
+    and then blows up: one iterate of 1e64 sets a floor of 2.2e50, every
+    genuine error falls below it, and a clean order-2 run is reported as
+    unmeasurable.  A solver that diverges in the pathological corner does
+    exactly this, so it is not a hypothetical.
+
+    Use instead the iterate that came CLOSEST to the root, which is the best
+    information the history contains about the root's magnitude.  For a
+    well-behaved run that is the last iterate anyway, so nothing changes.
+    """
+    best = None
+    best_magnitude = None
+    for iterate, magnitude in zip(iterates, magnitudes):
+        if not _isfinite(iterate) or not _isfinite(magnitude):
+            continue
+        if best_magnitude is None or magnitude < best_magnitude:
+            best, best_magnitude = iterate, magnitude
+    return best
 
 
 def _usable_prefix(magnitudes: Sequence[float], floor=None) -> list[float]:
@@ -270,6 +310,8 @@ def order_from_history_detail(
     if use_reference and have_errors:
         source = "error"
         magnitudes = [abs(record.error) for record in history]
+        # Each magnitude belongs to the iterate on the same row.
+        aligned_iterates = [record.E for record in history]
     else:
         source = "step"
         iterates = [record.E for record in history]
@@ -280,12 +322,14 @@ def order_from_history_detail(
             )
         magnitudes = [abs(iterates[i] - iterates[i - 1])
                       for i in range(1, len(iterates))]
+        # Step n is |x_n - x_{n-1}|, so it belongs to x_n.
+        aligned_iterates = iterates[1:]
 
     if floor is None:
         # Scale the floor by the root itself: the errors are absolute, so the
         # meaningful limit is relative to where the root sits.
-        scale = history[-1].E if history else None
-        floor = _working_floor(scale)
+        scale = _reference_scale(aligned_iterates, magnitudes)
+        floor = _working_floor(scale, like=magnitudes[0] if magnitudes else None)
 
     usable = _usable_prefix(magnitudes, floor=floor)
     estimates = coc(usable)
