@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import math
+
+import mpmath as mp
 import pytest
 
 from conftest import skip_if_unimplemented
-from keplerbench.evaluation.convergence_order import acoc, coc
+from keplerbench.evaluation.convergence_order import acoc, coc, last_finite
 from keplerbench.evaluation.cost_model import weighted_cost
 from keplerbench.evaluation.metrics import efficiency_index
 
@@ -13,14 +16,42 @@ from keplerbench.evaluation.metrics import efficiency_index
 def test_coc_recovers_a_known_order():
     """Build a synthetic error sequence with e_{n+1} = C * e_n**p and check
     the estimator returns p. If it cannot do this, it cannot be trusted on
-    real data."""
+    real data.
+
+    Note on the last term: at p = 3 this sequence reaches 9.1e-175 by the
+    fifth step, and the sixth (7.5e-523) underflows to exactly 0.0 in double
+    precision. coc() therefore reports nan for that final triple - correctly,
+    and by design: undefined estimates are returned in place rather than
+    dropped, so the caller can see where the sequence stopped being
+    informative. Hence last_finite() rather than [-1]. The underflow is a
+    miniature of the precision floor that motivates the whole module.
+    """
     with skip_if_unimplemented():
         p_true, C = 3.0, 0.5
         errs = [1e-2]
         for _ in range(5):
             errs.append(C * errs[-1] ** p_true)
         estimates = coc(errs)
-        assert estimates[-1] == pytest.approx(p_true, rel=1e-3)
+        assert math.isnan(estimates[-1]), "underflowed term must report nan"
+        assert last_finite(estimates) == pytest.approx(p_true, rel=1e-3)
+
+
+def test_coc_at_extended_precision_has_no_floor():
+    """The same sequence in mpmath: no underflow, so every triple is usable.
+
+    This is the path experiments/verification.py runs on, and the reason the
+    estimators are written to be arithmetic-agnostic.
+    """
+    with skip_if_unimplemented():
+        with mp.workdps(200):
+            p_true = mp.mpf(3)
+            errs = [mp.mpf("1e-2")]
+            for _ in range(5):
+                errs.append(mp.mpf("0.5") * errs[-1] ** p_true)
+            estimates = coc(errs)
+            assert len(estimates) == 4
+            assert all(not mp.isnan(v) for v in estimates)
+            assert float(estimates[-1]) == pytest.approx(3.0, rel=1e-12)
 
 
 def test_acoc_agrees_with_coc_on_the_same_sequence():
