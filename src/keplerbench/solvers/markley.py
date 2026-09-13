@@ -73,13 +73,25 @@ class MarkleySolver(KeplerSolver):
         w = (abs(r) + math.sqrt(q ** 3 + r * r)) ** (2.0 / 3.0)
         return (2.0 * r * w / (w * w + w * q + q * q) + Mr) / d
 
-    def _refine(self, problem: KeplerProblem, E_est: float):
-        
+    def _refine(self, problem: KeplerProblem, E_est: float) -> float:
+        """Markley's own fifth-order refinement, applied exactly once
+        (Markley 1995, Eqs. 21-29).  All of f, f', f'', f''', f'''' come from a
+        single sincos pair, so the whole method costs one transcendental call.
+
+            f0 = E - e sinE - M   f1 = 1 - e cosE
+            f2 = e sinE (= f'')    f3 = e cosE (= f''')    f4 = -e sinE (= -f2)
+
+            d3 = -f0 / (f1 - f0 f2 / (2 f1))                      # Eq. 22 (Halley)
+            d4 = -f0 / (f1 + d3 f2 / 2 + d3^2 f3 / 6)             # Eq. 23
+            d5 = -f0 / (f1 + d4 f2 / 2 + d4^2 f3 / 6 + d4^3 f4/24)# Eq. 24
+            E  = E_est + d5                                        # Eq. 29
+        """
         f0, f1, f2, f3 = problem.derivatives(E_est, order=3)
-        c1 = -f0 / f1
-        c2 = -f0 / (f1 + c1 * f2 / 2.0)
-        c3 = -f0 / (f1 + c2 * f2 / 2.0 + c2 ** 2 * f3 / 6.0)
-        return E_est + c3
+        f4 = -f2  
+        d3 = -f0 / (f1 - 0.5 * f0 * f2 / f1)
+        d4 = -f0 / (f1 + 0.5 * d3 * f2 + d3 ** 2 * f3 / 6.0)
+        d5 = -f0 / (f1 + 0.5 * d4 * f2 + d4 ** 2 * f3 / 6.0 + d4 ** 3 * f4 / 24.0)
+        return E_est + d5
 
     def solve(
         self,
