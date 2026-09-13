@@ -62,4 +62,8 @@ class DanbySolver(IterativeSolver):
         #      which is what the robustness metric needs.
         #   4. Cross-check against radvel.kepler on ~1000 random (e, M):
         #      the roots must agree to ~1e-14.
-        raise NotImplementedError("DanbySolver.step: see TODO above")
+        f0, f1, f2, f3 = problem.derivatives(E, order=3)
+        d1 = -f0 / f1
+        d2 = -f0 / (f1 + d1 * f2 / 2)
+        d3 = -f0 / (f1 + d2 * f2 / 2 + d2**2 * f3 / 6)
+        return E + d3
