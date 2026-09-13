@@ -22,6 +22,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
 
 from keplerbench.evaluation.robustness import HARD_CORNER_E, HARD_CORNER_M
 from keplerbench.plotting.style import SOLVER_COLORS
@@ -158,7 +160,6 @@ def plot_iterations_heatmap(df, solver: str, guess: str, ax=None,
     # Overlay the failures so they sit on top of the colormap, never in it.
     failure_layer = np.ma.masked_where(~(failed > 0.0), failed)
     if failure_layer.count():
-        from matplotlib.colors import ListedColormap
         ax.pcolormesh(
             _mesh_edges(M_values), _mesh_edges(e_values), failure_layer,
             cmap=ListedColormap([NON_CONVERGED_COLOR]), shading="flat",
@@ -314,5 +315,13 @@ def plot_guess_effect(df, ax=None, baseline: str = BASELINE_GUESS):
     ax.set_ylabel(f"mean iterations saved vs. {baseline}")
     ax.set_xlabel("solver")
     ax.set_title(f"Effect of the starting guess (baseline: {baseline})")
-    ax.legend(loc="best", fontsize=8, title="guess")
+    # Colour encodes the solver here, so a legend built from the bars would
+    # show every guess in whichever solver happens to come first. Only the
+    # hatch distinguishes guesses, so the key is drawn neutral.
+    ax.legend(
+        handles=[Patch(facecolor="#DDDDDD", edgecolor="#333333",
+                       hatch=hatches[k % len(hatches)], label=guess)
+                 for k, guess in enumerate(other_guesses)],
+        loc="best", fontsize=8, title="guess",
+    )
     return ax.figure

@@ -190,6 +190,14 @@ def test_guess_effect_ignores_a_point_only_one_guess_solved():
     assert [bar.get_height() for bar in ax.patches] == pytest.approx([2.0])
 
 
+def test_guess_effect_legend_names_the_guesses_not_the_solvers(grid_df):
+    """Colour encodes the solver in this figure, so a legend built from the
+    bars would show every guess in whichever solver sorts first. The key must
+    list the guesses and lean on hatch alone."""
+    ax = gp.plot_guess_effect(grid_df).axes[0]
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == ["canonical"]
+
+
 def test_guess_effect_rejects_an_unknown_baseline(grid_df):
     with pytest.raises(ValueError, match="baseline"):
         gp.plot_guess_effect(grid_df, baseline="napier")
