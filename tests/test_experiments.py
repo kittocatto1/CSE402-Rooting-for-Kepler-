@@ -264,3 +264,13 @@ def test_grid_benchmark_preflight_fails_before_the_sweep(monkeypatch):
     with pytest.raises(NotImplementedError, match="save_results"):
         gb.run("ignored.yaml")
     assert not swept, "preflight ran the sweep before checking dependencies"
+
+
+def test_grid_benchmark_reports_a_stubbed_load_config_as_a_status(monkeypatch):
+    """Running the script today must say who it is waiting on, not hand the
+    runner a bare traceback from inside someone else's module."""
+    from keplerbench.experiments import grid_benchmark as gb
+
+    with pytest.raises(NotImplementedError, match="load_config") as excinfo:
+        gb.run("configs/grid_benchmark.yaml")
+    assert "still stubs" in str(excinfo.value)

@@ -38,6 +38,23 @@ EXPERIMENT = "grid_benchmark"
 PREFLIGHT_EXPERIMENT = "_preflight"
 
 
+def _still_stubs(missing: Sequence[str]) -> str:
+    """One message naming every dependency that is not written yet.
+
+    Phrased as a status rather than a crash: while five tracks are in flight
+    the normal state of this experiment is "waiting on someone", and whoever
+    runs the script should be told who, not handed a traceback.
+    """
+    message = ("grid_benchmark cannot run yet - these are still stubs: "
+               + ", ".join(missing))
+    # Only worth suggesting when the reference roots are what is missing;
+    # offered unconditionally it reads as a fix for whatever else broke.
+    if any("reference" in name for name in missing):
+        message += (". Set use_reference: false in the config to drop the "
+                    "reference-root dependency")
+    return message + "."
+
+
 def _preflight(use_reference: bool) -> None:
     """Fail before the sweep, not after it, if a dependency is still a stub.
 
@@ -84,12 +101,7 @@ def _preflight(use_reference: bool) -> None:
         pass  # not empty, or never created - either way, leave it alone.
 
     if missing:
-        raise NotImplementedError(
-            "grid_benchmark cannot run yet - these are still stubs: "
-            + ", ".join(missing)
-            + ". Run with use_reference=false in the config to skip the "
-              "reference-root dependency."
-        )
+        raise NotImplementedError(_still_stubs(missing))
 
 
 def _timing_points(points: Sequence[tuple[float, float]],
@@ -155,7 +167,10 @@ def run(config_path: str, limit: int | None = None) -> None:
     builder emits the uniform block first, so a small limit still covers the
     ordinary region rather than only the pathological corner.
     """
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except NotImplementedError:
+        raise NotImplementedError(_still_stubs(["io.config.load_config"])) from None
     _preflight(cfg.use_reference)
 
     points = build_grid(cfg.grid)
