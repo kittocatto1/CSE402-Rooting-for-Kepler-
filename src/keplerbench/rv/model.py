@@ -28,6 +28,7 @@ class OrbitParams:
 
 def rv_curve(times, params: OrbitParams, solver_name: str = "danby",
              guess_name: str = "canonical", tol: float = 1e-14,
+             max_iter: int = 50,
              cost_out: dict[str, int] | None = None) -> np.ndarray:
     """Model radial velocities at ``times`` using OUR solver, not RadVel's.
 
@@ -44,7 +45,7 @@ def rv_curve(times, params: OrbitParams, solver_name: str = "danby",
     total_cost: dict[str, int] = {}
     for i, t in enumerate(times):
         M = mean_anomaly(t, params.P, params.tp)
-        result = solve_one(solver, guess, params.e, M, tol=tol)
+        result = solve_one(solver, guess, params.e, M, tol=tol, max_iter=max_iter)
         nu = true_anomaly(result.E, params.e)
         velocities[i] = radial_velocity(nu, params.K, params.e, params.omega,
                                         params.gamma)
