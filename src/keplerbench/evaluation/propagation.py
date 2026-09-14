@@ -1,21 +1,63 @@
 """Downstream metrics: solver error -> orbital parameter error (Section 4.3).
 
+Every function here is pure DataFrame/dict transformation - no fitting, no
+solving. That work happens in ``experiments/error_propagation.py`` and
+``experiments/monte_carlo.py``; this module only turns their raw output into
+the tables the report needs, so every number here traces back to a result
+file (the same house rule ``plotting/`` follows).
+
 Owner: Fariha.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+
+#: Fitted parameters this study tracks shifts for, in report order.
+TRACKED_PARAMS = ["e", "omega", "K", "gamma", "jitter"]
+
+
+def _require(df: pd.DataFrame, columns: list[str], who: str) -> None:
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        raise KeyError(f"{who}: DataFrame is missing {missing}; got {list(df.columns)}")
 
 
 def parameter_shift(fits: pd.DataFrame, reference_tol: float) -> pd.DataFrame:
     """Shift in each fitted parameter relative to the tightest-tolerance fit.
 
-    TODO(Fariha): for each solver, take the row at ``reference_tol`` as the
-    baseline and report absolute and relative shifts in P, e, K (and any
-    other fitted parameter) at every looser tolerance.
+    For each solver, the row at ``tolerance == reference_tol`` is the
+    baseline; every tolerance (including the reference itself, at shift 0)
+    is reported as an absolute and relative shift from it. One row per
+    (solver, tolerance).
     """
-    raise NotImplementedError("parameter_shift: see TODO above")
+    _require(fits, ["solver", "tolerance"], "parameter_shift")
+    params = [p for p in TRACKED_PARAMS if p in fits.columns]
+    if not params:
+        raise KeyError(
+            f"parameter_shift: none of {TRACKED_PARAMS} found in columns {list(fits.columns)}"
+        )
+
+    rows = []
+    for solver, group in fits.groupby("solver", sort=False):
+        reference_rows = group.loc[np.isclose(group["tolerance"], reference_tol)]
+        if reference_rows.empty:
+            raise ValueError(
+                f"parameter_shift: no row for solver {solver!r} at "
+                f"tolerance={reference_tol!r}; available tolerances: "
+                f"{sorted(group['tolerance'].unique())}"
+            )
+        reference = reference_rows.iloc[0]
+
+        for _, row in group.iterrows():
+            entry = {"solver": solver, "tolerance": row["tolerance"]}
+            for p in params:
+                shift = row[p] - reference[p]
+                entry[f"{p}_shift"] = shift
+                entry[f"{p}_shift_rel"] = shift / reference[p] if reference[p] else float("nan")
+            rows.append(entry)
+    return pd.DataFrame(rows)
 
 
 def shift_in_sigma(shifts: pd.DataFrame, posterior_sigma: dict) -> pd.DataFrame:
@@ -23,23 +65,47 @@ def shift_in_sigma(shifts: pd.DataFrame, posterior_sigma: dict) -> pd.DataFrame:
 
     This is the number that answers "does the solver choice matter?".
     A shift of 0.01 sigma is irrelevant; a shift of 0.5 sigma is not.
-
-    TODO(Fariha): divide each parameter shift by its posterior sigma and
-    return the table. Flag anything above a threshold you choose and justify
-    in the report.
+    ``posterior_sigma`` is keyed by the same parameter names as
+    :data:`TRACKED_PARAMS` (e.g. the dict returned by
+    ``error_propagation.run_reference_mcmc``).
     """
-    raise NotImplementedError("shift_in_sigma: see TODO above")
+    out = shifts.copy()
+    for param in TRACKED_PARAMS:
+        shift_col = f"{param}_shift"
+        sigma = posterior_sigma.get(param)
+        if shift_col in out.columns and sigma:
+            out[f"{param}_shift_sigma"] = out[shift_col] / sigma
+    return out
 
 
-def compare_error_budgets(solver_shifts: pd.DataFrame,
-                          noise_spread: dict,
+def compare_error_budgets(solver_shifts: pd.DataFrame, noise_spread: dict,
                           posterior_sigma: dict) -> pd.DataFrame:
     """The final summary table of the propagation study.
 
     Columns: parameter | solver-induced shift | noise-driven spread |
              MCMC sigma | ratio(solver / noise)
 
-    TODO(Fariha): assemble from the three inputs. This single table is the
-    deliverable for Proposal Section 6, bullet 3.
+    ``solver_shifts`` is ``parameter_shift``'s output (or ``shift_in_sigma``'s
+    - either has the ``<param>_shift`` columns this needs); the
+    solver-induced shift reported per parameter is the largest absolute
+    shift seen across every solver and tolerance, i.e. the worst case for
+    "does the solver matter". ``noise_spread`` and ``posterior_sigma`` are
+    dicts keyed the same way (e.g. ``monte_carlo`` row std devs, and
+    ``error_propagation.run_reference_mcmc``'s output).
     """
-    raise NotImplementedError("compare_error_budgets: see TODO above")
+    _require(solver_shifts, [], "compare_error_budgets")
+    available = [p for p in TRACKED_PARAMS if f"{p}_shift" in solver_shifts.columns]
+
+    rows = []
+    for param in available:
+        solver_shift = float(solver_shifts[f"{param}_shift"].abs().max())
+        noise = noise_spread.get(param)
+        sigma = posterior_sigma.get(param)
+        rows.append({
+            "parameter": param,
+            "solver_induced_shift": solver_shift,
+            "noise_driven_spread": float(noise) if noise is not None else float("nan"),
+            "mcmc_sigma": float(sigma) if sigma is not None else float("nan"),
+            "ratio_solver_to_noise": (solver_shift / noise) if noise else float("nan"),
+        })
+    return pd.DataFrame(rows)
