@@ -10,13 +10,21 @@ from pathlib import Path
 import pandas as pd
 
 
-#: name -> (raw column -> canonical column) rename map, plus a fixed
-#: telescope label when the raw file does not record one (single-instrument
-#: datasets only report one, so there is nothing to disambiguate).
+#: name -> loading spec: the raw file, how pandas should read it, a
+#: raw-column -> canonical-column rename map, and (only for single-
+#: instrument files that don't record one) a fixed telescope label.
 _KNOWN_DATASETS: dict[str, dict] = {
     "k2-24": {
+        "filename": "k2-24.csv",
+        "read_kwargs": {"index_col": 0},
         "rename": {"t": "time", "vel": "mnvel"},
         "tel": "hires",
+    },
+    "hd164922": {
+        "filename": "hd164922.txt",
+        "read_kwargs": {"sep": r"\s+"},
+        "rename": {},
+        "tel": None,  # already has a real, multi-instrument tel column
     },
 }
 
@@ -24,19 +32,29 @@ _KNOWN_DATASETS: dict[str, dict] = {
 def load_rv_dataset(name: str) -> pd.DataFrame:
     """Return a DataFrame with columns: time, mnvel, errvel, tel.
 
-    Currently backed by ``k2-24`` (EPIC 203771098): 32 HIRES radial-velocity
-    points for a two-planet sub-Saturn system. See ``data/README.md`` for
-    provenance and citation. This is a moderately eccentric, multi-planet
-    system, so the Kepler solver's accuracy is not irrelevant to the fit the
-    way it would be for a circular orbit.
+    Two datasets are available:
+
+    - ``"k2-24"`` (EPIC 203771098): 32 HIRES points, single instrument, a
+      two-planet sub-Saturn system.
+    - ``"hd164922"``: 401 points across 3 HIRES eras/setups (multi-
+      instrument - see ``rv.radvel_bridge.build_posterior`` for how that is
+      handled), a multi-planet system.
+
+    See ``data/README.md`` for provenance and citation. Both are real,
+    moderately eccentric, multi-planet systems, so the Kepler solver's
+    accuracy is not irrelevant to a fit the way it would be for a circular
+    orbit.
     """
-    key = name[:-4] if name.endswith(".csv") else name
+    key = name
+    for ext in (".csv", ".txt"):
+        if key.endswith(ext):
+            key = key[: -len(ext)]
     if key not in _KNOWN_DATASETS:
         raise KeyError(f"unknown RV dataset {name!r}; known: {sorted(_KNOWN_DATASETS)}")
     spec = _KNOWN_DATASETS[key]
 
-    path = dataset_path(f"{key}.csv")
-    df = pd.read_csv(path, index_col=0)
+    path = dataset_path(spec["filename"])
+    df = pd.read_csv(path, **spec["read_kwargs"])
     df = df.rename(columns=spec["rename"])
     if "tel" not in df.columns:
         df["tel"] = spec["tel"]
