@@ -9,6 +9,6 @@ max_iter: 50
 seed: 0
 
 extra:
-  dataset: null             # must match error_propagation.yaml
+  dataset: hd164922         # must match error_propagation.yaml
   n_realisations: 50        # start here to debug, raise for the real run
   include_jitter: true
