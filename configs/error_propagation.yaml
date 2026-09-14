@@ -9,11 +9,18 @@ max_iter: 50
 seed: 0
 
 extra:
-  # TODO(Fariha): fill in once the dataset is chosen, and cite it in the report.
-  dataset: null
+  # HD 164922: 401 points across 3 instruments, real cadence/uncertainties;
+  # see rv/dataset.py and data/README.md. A moderately eccentric orbit is
+  # INJECTED in place of the real (multi-planet, single-planet-model-
+  # degenerate) signal - see the module docstring in
+  # experiments/error_propagation.py for why. (k2-24 also works - smaller,
+  # single-instrument, useful for quick debugging.)
+  dataset: hd164922
   tolerance_sweep: [1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10, 1.0e-12, 1.0e-14]
   reference_tolerance: 1.0e-14
   # One MCMC run supplies the posterior widths; the tolerance sweep uses
   # maximum-likelihood fits only.
   run_mcmc: true
-  mcmc_steps: null          # TODO(Fariha): choose and record
+  # 2000 steps is a debug/CI-scale budget (~5-10s, serial, 32 points, 4-5
+  # free parameters); raise for the real run and record whatever N is used.
+  mcmc_steps: 2000
