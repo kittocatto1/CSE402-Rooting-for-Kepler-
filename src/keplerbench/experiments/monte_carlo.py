@@ -19,6 +19,7 @@ import pandas as pd
 from keplerbench.experiments.error_propagation import (
     INITIAL_GUESS,
     INJECTED_TRUTH,
+    _orbit_params_from_extra,
     inject_synthetic_dataset,
     noiseless_curve,
 )
@@ -77,8 +78,10 @@ def run_monte_carlo(dataset: pd.DataFrame, truth: OrbitParams, jitter: float,
 def run(config_path: str) -> pd.DataFrame:
     """Entry point used by scripts/run_monte_carlo.py.
 
-    1. Loads the config and rebuilds the SAME injected K2-24 dataset
-       ``error_propagation.py`` uses (same seed, same injected truth).
+    1. Loads the config and rebuilds the SAME injected dataset
+       ``error_propagation.py`` uses (same seed; same injected truth, read
+       from ``extra.injected_truth`` if given, else the shared default -
+       must match error_propagation.yaml's setting to be the same study).
     2. Takes the config's one fixed solver, fit at tight tolerance, as the
        "best-fit model" to generate realisations around.
     3. Refits N noisy realisations and writes their parameter spread.
@@ -89,13 +92,16 @@ def run(config_path: str) -> pd.DataFrame:
     cfg = load_config(config_path)
     dataset_name = cfg.extra.get("dataset") or "k2-24"
     real_dataset = load_rv_dataset(dataset_name)
-    dataset = inject_synthetic_dataset(real_dataset, INJECTED_TRUTH, seed=cfg.seed)
+
+    truth = _orbit_params_from_extra(cfg, "injected_truth", INJECTED_TRUTH)
+    initial_guess = _orbit_params_from_extra(cfg, "initial_guess", INITIAL_GUESS)
+    dataset = inject_synthetic_dataset(real_dataset, truth, seed=cfg.seed)
 
     solver_name = cfg.solvers[0]
     guess_name = cfg.guesses[0] if cfg.guesses else "canonical"
 
     best_fit, _, best_jitter = fit_with_solver(
-        dataset, INITIAL_GUESS, solver_name, cfg.tol,
+        dataset, initial_guess, solver_name, cfg.tol,
         guess_name=guess_name, max_iter=cfg.max_iter,
     )
 
