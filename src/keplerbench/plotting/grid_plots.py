@@ -26,6 +26,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 from keplerbench.evaluation.robustness import HARD_CORNER_E, HARD_CORNER_M
+from keplerbench.experiments.runner import GUESS_INDEPENDENT
 from keplerbench.plotting.style import SOLVER_COLORS
 
 __all__ = [
@@ -64,6 +65,31 @@ def _require(df: pd.DataFrame, columns: list[str], who: str) -> None:
         raise KeyError(
             f"{who}: DataFrame is missing {missing}; got {list(df.columns)}"
         )
+
+
+def _restore_guess_labels(df: pd.DataFrame, who: str) -> pd.DataFrame:
+    """Undo pandas reading the "n/a" pseudo-guess back as NaN.
+
+    "n/a" is on ``pd.read_csv``'s default missing-value list, so a raw.csv
+    loaded the ordinary way comes back with the closed-form solvers' guess
+    as NaN, and every comparison against the label silently misses them.
+    Only rows whose solver is guess-independent are restored; a NaN guess on
+    any other solver is a genuinely missing label and fails loudly, rather
+    than being quietly filed under "n/a" and dropped from the comparison.
+    """
+    missing = df["guess"].isna()
+    if not missing.any():
+        return df
+    unexplained = sorted(set(df.loc[missing & ~df["solver"].isin(GUESS_INDEPENDENT),
+                                    "solver"].astype(str)))
+    if unexplained:
+        raise ValueError(
+            f"{who}: rows with no guess label for {unexplained}; only the "
+            f"guess-independent solvers {sorted(GUESS_INDEPENDENT)} may lack one"
+        )
+    df = df.copy()
+    df.loc[missing, "guess"] = GUESS_INDEPENDENT_LABEL
+    return df
 
 
 def _solver_color(name: str) -> str:
@@ -135,6 +161,7 @@ def plot_iterations_heatmap(df, solver: str, guess: str, ax=None,
     """
     _require(df, ["solver", "guess", "e", "M", "iterations", "converged"],
              "plot_iterations_heatmap")
+    df = _restore_guess_labels(df, "plot_iterations_heatmap")
     selection = _select(df, "plot_iterations_heatmap",
                         solver=solver, guess=guess)
 
@@ -205,6 +232,7 @@ def plot_failure_map(df, solver: str, ax=None, guess: str | None = None):
     """
     _require(df, ["solver", "guess", "e", "M", "converged"],
              "plot_failure_map")
+    df = _restore_guess_labels(df, "plot_failure_map")
     equals: dict[str, object] = {"solver": solver}
     if guess is not None:
         equals["guess"] = guess
@@ -270,6 +298,7 @@ def plot_guess_effect(df, ax=None, baseline: str = BASELINE_GUESS):
     """
     _require(df, ["solver", "guess", "e", "M", "iterations", "converged"],
              "plot_guess_effect")
+    df = _restore_guess_labels(df, "plot_guess_effect")
 
     usable = df[df["guess"] != GUESS_INDEPENDENT_LABEL]
     if usable.empty:
