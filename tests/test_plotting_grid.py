@@ -210,3 +210,30 @@ def test_guess_effect_rejects_an_all_closed_form_frame():
     ])
     with pytest.raises(ValueError, match="guess-independent"):
         gp.plot_guess_effect(df)
+
+
+# ----------------------------------------------------------------------
+# Reading raw.csv back from disk
+# ----------------------------------------------------------------------
+def test_n_a_label_survives_a_csv_round_trip(markley_df, tmp_path):
+    """"n/a" is on pd.read_csv's default missing-value list, so a raw.csv
+    read back the ordinary way has NaN for markley's guess. The figures must
+    still treat it as the guess-independent label, not crash on it."""
+    path = tmp_path / "raw.csv"
+    markley_df.to_csv(path, index=False)
+    df = pd.read_csv(path)
+    assert df.loc[df["solver"] == "markley", "guess"].isna().all()
+
+    ax = gp.plot_guess_effect(df).axes[0]
+    assert "markley" not in [t.get_text() for t in ax.get_xticklabels()]
+    gp.plot_iterations_heatmap(df, "markley", gp.GUESS_INDEPENDENT_LABEL)
+    gp.plot_failure_map(df, "markley", guess=gp.GUESS_INDEPENDENT_LABEL)
+
+
+def test_a_missing_guess_on_an_iterative_solver_fails_loudly(grid_df):
+    """Only closed-form solvers may lack a guess; anywhere else a NaN is a
+    real gap, and filing it under "n/a" would drop it from the comparison."""
+    df = grid_df.copy()
+    df.loc[df.index[0], "guess"] = None
+    with pytest.raises(ValueError, match="no guess label"):
+        gp.plot_guess_effect(df)
