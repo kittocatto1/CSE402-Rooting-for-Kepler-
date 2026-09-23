@@ -24,3 +24,13 @@ extra:
   # 2000 steps is a debug/CI-scale budget (~5-10s, serial, 32 points, 4-5
   # free parameters); raise for the real run and record whatever N is used.
   mcmc_steps: 2000
+
+  # The orbit injected in place of the real (multi-planet, single-planet-
+  # model-degenerate) signal - P is HD 164922's/K2-24's real, well-known
+  # period; tp/e/omega/K are a deliberately-chosen, moderately eccentric
+  # synthetic orbit, NOT a claim about the real planet's orbit. Must match
+  # monte_carlo.yaml's injected_truth to be studying the same fit.
+  injected_truth: {P: 20.885258, tp: 2400.0, e: 0.35, omega: 1.0, K: 5.0, gamma: 0.0}
+  # Deliberately offset from injected_truth so every fit has to do real work
+  # to recover it, rather than starting on the answer.
+  initial_guess: {P: 20.885258, tp: 2400.0, e: 0.15, omega: 0.3, K: 3.0, gamma: 0.0}

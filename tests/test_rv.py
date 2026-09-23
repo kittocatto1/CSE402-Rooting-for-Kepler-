@@ -227,6 +227,31 @@ def test_reference_E_solves_keplers_equation():
         assert E - e * math.sin(E) - M == pytest.approx(0.0, abs=1e-12)
 
 
+class _FakeConfig:
+    """Minimal stand-in for io.config.ExperimentConfig's .extra attribute -
+    lets _orbit_params_from_extra be tested without Anisa's load_config."""
+    def __init__(self, extra):
+        self.extra = extra
+
+
+def test_orbit_params_from_extra_falls_back_to_default_when_absent():
+    with skip_if_unimplemented():
+        cfg = _FakeConfig(extra={})
+        result = error_propagation._orbit_params_from_extra(
+            cfg, "injected_truth", error_propagation.INJECTED_TRUTH)
+        assert result is error_propagation.INJECTED_TRUTH
+
+
+def test_orbit_params_from_extra_overrides_from_config():
+    with skip_if_unimplemented():
+        cfg = _FakeConfig(extra={
+            "injected_truth": {"P": 1.0, "tp": 2.0, "e": 0.1, "omega": 0.2, "K": 3.0, "gamma": 0.5},
+        })
+        result = error_propagation._orbit_params_from_extra(
+            cfg, "injected_truth", error_propagation.INJECTED_TRUTH)
+        assert result == OrbitParams(P=1.0, tp=2.0, e=0.1, omega=0.2, K=3.0, gamma=0.5)
+
+
 def test_inject_synthetic_dataset_keeps_real_cadence_and_noise():
     with skip_if_unimplemented():
         real = load_rv_dataset("k2-24")

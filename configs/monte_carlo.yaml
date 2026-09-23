@@ -12,3 +12,9 @@ extra:
   dataset: hd164922         # must match error_propagation.yaml
   n_realisations: 50        # start here to debug, raise for the real run
   include_jitter: true
+
+  # Must match error_propagation.yaml's injected_truth/initial_guess - this
+  # is the same study, just measuring noise-driven spread instead of
+  # solver-induced shift.
+  injected_truth: {P: 20.885258, tp: 2400.0, e: 0.35, omega: 1.0, K: 5.0, gamma: 0.0}
+  initial_guess: {P: 20.885258, tp: 2400.0, e: 0.15, omega: 0.3, K: 3.0, gamma: 0.0}

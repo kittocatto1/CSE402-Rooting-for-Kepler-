@@ -40,7 +40,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import brentq
 
-from keplerbench.io.config import load_config
+from keplerbench.evaluation.propagation import parameter_shift, shift_in_sigma
+from keplerbench.io.config import ExperimentConfig, load_config
 from keplerbench.io.results_io import results_path
 from keplerbench.rv.anomaly import mean_anomaly, radial_velocity, true_anomaly
 from keplerbench.rv.dataset import load_rv_dataset
@@ -51,6 +52,12 @@ from keplerbench.rv.radvel_bridge import fit_with_solver
 #: for a single-planet model) signal. Period is K2-24 b's real, well-known
 #: period; tp/e/omega/K are a deliberately-chosen, moderately eccentric
 #: synthetic orbit - NOT a claim about the real planet's orbit.
+#:
+#: Used as the DEFAULT for direct calls (and tests, which call
+#: inject_synthetic_dataset/run_tolerance_sweep directly and should not need
+#: a config file). run(config_path) instead reads extra.injected_truth /
+#: extra.initial_guess when present, so a run's ground truth is traceable to
+#: its YAML config rather than hidden in source - see _orbit_params_from_extra.
 INJECTED_TRUTH = OrbitParams(P=20.885258, tp=2400.0, e=0.35, omega=1.0, K=5.0, gamma=0.0)
 
 #: Deliberately offset from INJECTED_TRUTH so every fit below has to do real
@@ -58,6 +65,20 @@ INJECTED_TRUTH = OrbitParams(P=20.885258, tp=2400.0, e=0.35, omega=1.0, K=5.0, g
 #: not exercise anything).
 INITIAL_GUESS = OrbitParams(P=INJECTED_TRUTH.P, tp=INJECTED_TRUTH.tp,
                             e=0.15, omega=0.3, K=3.0, gamma=0.0)
+
+
+def _orbit_params_from_extra(cfg: ExperimentConfig, key: str,
+                             default: OrbitParams) -> OrbitParams:
+    """Build an OrbitParams from ``cfg.extra[key]`` (a dict with the same
+    fields as OrbitParams: P, tp, e, omega, K, gamma) if present, else
+    ``default``. Lets ``configs/*.yaml`` override the ground truth / initial
+    guess a run actually used, instead of it only being visible in source -
+    ``io/config.py``'s own rule ("no experiment should hard-code a grid, a
+    tolerance or a solver list") applies just as much to the truth an
+    injection-recovery study is tested against.
+    """
+    spec = cfg.extra.get(key)
+    return default if spec is None else OrbitParams(**spec)
 
 
 def _reference_E(e: float, M: float) -> float:
@@ -170,30 +191,48 @@ def run_reference_mcmc(dataset: pd.DataFrame, initial_guess: OrbitParams,
 def run(config_path: str) -> pd.DataFrame:
     """Entry point used by scripts/run_error_propagation.py.
 
-    Loads the config (Anisa's ``io/config.py``), builds the injected K2-24
-    dataset, sweeps every solver over the tolerance ladder, optionally runs
-    one reference MCMC for posterior widths, and writes
-    ``results/error_propagation/raw.csv`` (+ ``posterior_sigma.csv``).
+    Loads the config (Anisa's ``io/config.py``), builds the injected dataset
+    (ground truth from ``extra.injected_truth`` if given, else
+    ``INJECTED_TRUTH``), sweeps every solver over the tolerance ladder,
+    optionally runs one reference MCMC for posterior widths, and writes:
+      - ``results/error_propagation/raw.csv``       (one row per solve)
+      - ``results/error_propagation/posterior_sigma.csv``  (if run_mcmc)
+      - ``results/error_propagation/summary.csv``   (parameter_shift,
+        in units of MCMC sigma when posterior_sigma was computed) - the
+        house rule in ``io/results_io.py`` ("Aggregated / summary tables go
+        to results/<experiment>/summary.csv") applies here like every other
+        experiment.
     """
     cfg = load_config(config_path)
     dataset_name = cfg.extra.get("dataset") or "k2-24"
     real_dataset = load_rv_dataset(dataset_name)
-    dataset = inject_synthetic_dataset(real_dataset, INJECTED_TRUTH, seed=cfg.seed)
+
+    truth = _orbit_params_from_extra(cfg, "injected_truth", INJECTED_TRUTH)
+    initial_guess = _orbit_params_from_extra(cfg, "initial_guess", INITIAL_GUESS)
+    dataset = inject_synthetic_dataset(real_dataset, truth, seed=cfg.seed)
 
     tolerances = cfg.extra.get(
         "tolerance_sweep", [1e-4, 1e-6, 1e-8, 1e-10, 1e-12, 1e-14])
+    reference_tol = cfg.extra.get("reference_tolerance", 1e-14)
     guess_name = cfg.guesses[0] if cfg.guesses else "canonical"
 
     fits_df = run_tolerance_sweep(
-        dataset, INITIAL_GUESS, cfg.solvers, tolerances,
+        dataset, initial_guess, cfg.solvers, tolerances,
         guess_name=guess_name, max_iter=cfg.max_iter,
     )
     fits_df.to_csv(results_path("error_propagation", "raw.csv"), index=False)
 
+    posterior_sigma: dict[str, float] = {}
     if cfg.extra.get("run_mcmc", True):
-        sigma = run_reference_mcmc(
-            dataset, INITIAL_GUESS, nrun=cfg.extra.get("mcmc_steps"), seed=cfg.seed)
-        pd.Series(sigma, name="posterior_sigma").to_csv(
+        posterior_sigma = run_reference_mcmc(
+            dataset, initial_guess, nrun=cfg.extra.get("mcmc_steps"), seed=cfg.seed)
+        pd.Series(posterior_sigma, name="posterior_sigma").to_csv(
             results_path("error_propagation", "posterior_sigma.csv"))
+
+    if not fits_df.empty:
+        shifts = parameter_shift(fits_df, reference_tol=reference_tol)
+        if posterior_sigma:
+            shifts = shift_in_sigma(shifts, posterior_sigma)
+        shifts.to_csv(results_path("error_propagation", "summary.csv"), index=False)
 
     return fits_df
