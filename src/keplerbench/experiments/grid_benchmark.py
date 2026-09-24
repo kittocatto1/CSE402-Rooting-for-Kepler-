@@ -200,7 +200,7 @@ def run(config_path: str, limit: int | None = None) -> None:
         record_history=False,           # far too much memory for the full grid
         reference_roots=reference_roots,
     )
-    raw_path = save_results(results, EXPERIMENT, "raw.csv")
+    raw_path = save_results(results, EXPERIMENT, "raw.csv", config=cfg)
     print(f"  wrote {raw_path} ({len(results)} rows)")
 
     # --- the small sub-grid that DOES keep history, for Suchi's figures ---
@@ -213,7 +213,8 @@ def run(config_path: str, limit: int | None = None) -> None:
             reference_roots=reference_roots,
             progress_every=0,
         )
-        history_path = save_history(with_history, EXPERIMENT, "history.csv")
+        history_path = save_history(with_history, EXPERIMENT, "history.csv",
+                                    config=cfg)
         print(f"  wrote {history_path} ({len(subgrid)} points with history)")
 
     # --- wall-clock, on a small representative subset ---
