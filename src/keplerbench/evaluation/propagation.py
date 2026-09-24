@@ -95,21 +95,31 @@ def compare_error_budgets(solver_shifts: pd.DataFrame, noise_spread: dict,
     "does the solver matter". ``noise_spread`` and ``posterior_sigma`` are
     dicts keyed the same way (e.g. ``monte_carlo`` row std devs, and
     ``error_propagation.run_reference_mcmc``'s output).
+
+    A parameter with neither a noise spread nor an MCMC sigma is left out:
+    with nothing to compare against it answers nothing (e.g. gamma on a
+    multi-instrument dataset, or jitter, whose MCMC width is per instrument).
     """
     _require(solver_shifts, [], "compare_error_budgets")
     available = [p for p in TRACKED_PARAMS if f"{p}_shift" in solver_shifts.columns]
 
+    def _value(d: dict, key: str) -> float:
+        v = d.get(key)
+        return float("nan") if v is None else float(v)
+
     rows = []
     for param in available:
+        noise = _value(noise_spread, param)
+        sigma = _value(posterior_sigma, param)
+        if np.isnan(noise) and np.isnan(sigma):
+            continue
         solver_shift = float(solver_shifts[f"{param}_shift"].abs().max())
-        noise = noise_spread.get(param)
-        sigma = posterior_sigma.get(param)
         rows.append({
             "parameter": param,
             "solver_induced_shift": solver_shift,
-            "noise_driven_spread": float(noise) if noise is not None else float("nan"),
-            "mcmc_sigma": float(sigma) if sigma is not None else float("nan"),
-            "ratio_solver_to_noise": (solver_shift / noise) if noise else float("nan"),
+            "noise_driven_spread": noise,
+            "mcmc_sigma": sigma,
+            "ratio_solver_to_noise": solver_shift / noise if noise else float("nan"),
         })
     return pd.DataFrame(rows)
 

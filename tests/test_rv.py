@@ -524,6 +524,15 @@ def test_compare_error_budgets_assembles_the_final_table():
     assert e_row["noise_driven_spread"] == pytest.approx(0.08)
     assert e_row["mcmc_sigma"] == pytest.approx(0.09)
     assert e_row["ratio_solver_to_noise"] == pytest.approx(0.0001 / 0.08)
+    # gamma/jitter have no noise spread or MCMC sigma here -> nothing to compare
+    assert set(budget["parameter"]) == {"e", "K"}
+
+
+def test_compare_error_budgets_treats_nan_as_missing():
+    shifts = prop.parameter_shift(_synthetic_fits(), reference_tol=1e-14)
+    budget = prop.compare_error_budgets(
+        shifts, noise_spread={"e": 0.08, "gamma": float("nan")}, posterior_sigma={})
+    assert list(budget["parameter"]) == ["e"]
 
 
 # ----------------------------------------------------------------------
