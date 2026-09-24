@@ -52,7 +52,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import brentq
 
-from keplerbench.evaluation.propagation import parameter_shift, shift_in_sigma
+from keplerbench.evaluation.propagation import fit_timing, parameter_shift, shift_in_sigma
 from keplerbench.io.config import ExperimentConfig, load_config
 from keplerbench.io.results_io import results_path
 from keplerbench.rv.anomaly import mean_anomaly, radial_velocity, true_anomaly
@@ -139,7 +139,9 @@ def inject_synthetic_dataset(real_dataset: pd.DataFrame, truth: OrbitParams,
 
 def run_tolerance_sweep(dataset: pd.DataFrame, initial_guess: OrbitParams,
                         solvers: list[str], tolerances: list[float],
-                        guess_name: str = "canonical", max_iter: int = 50) -> pd.DataFrame:
+                        guess_name: str = "canonical", max_iter: int = 50,
+                        vary_period: bool = True,
+                        fixed_tc: float | None = None) -> pd.DataFrame:
     """Fit ``dataset`` with every (solver, tolerance) pair.
 
     One row per (solver, tolerance) with the fitted P/tp/e/omega/K/gamma and
@@ -151,10 +153,13 @@ def run_tolerance_sweep(dataset: pd.DataFrame, initial_guess: OrbitParams,
     rows = []
     for solver_name in solvers:
         for tol in tolerances:
+            timing: dict[str, float] = {}
             try:
                 fitted, n_solves, jitter = fit_with_solver(
                     dataset, initial_guess, solver_name, tol,
                     guess_name=guess_name, max_iter=max_iter,
+                    vary_period=vary_period, fixed_tc=fixed_tc,
+                    timing_out=timing,
                 )
             except NotImplementedError as exc:
                 warnings.warn(f"skipping {solver_name!r} at tol={tol:g}: {exc}")
@@ -164,6 +169,8 @@ def run_tolerance_sweep(dataset: pd.DataFrame, initial_guess: OrbitParams,
                 "P": fitted.P, "tp": fitted.tp, "e": fitted.e,
                 "omega": fitted.omega, "K": fitted.K, "gamma": fitted.gamma,
                 "jitter": jitter, "n_solves": n_solves,
+                "fit_seconds": timing["fit_seconds"],
+                "native_fit_seconds": timing["native_fit_seconds"],
             })
     return pd.DataFrame(rows)
 
@@ -183,6 +190,16 @@ REAL_DATASET_INITIAL_GUESSES: dict[str, OrbitParams] = {
     "k2-24": OrbitParams(P=20.885258, tp=2067.706016317427, e=0.15, omega=0.3, K=3.0, gamma=0.0),
     "hd164922": OrbitParams(P=1207.0, tp=2455474.0, e=0.1, omega=0.0, K=5.0, gamma=0.0),
     "k2-131": OrbitParams(P=0.3693038, tp=2457782.65615, e=0.05, omega=0.0, K=3.0, gamma=0.0),
+}
+
+#: Transit times measured by photometry, held fixed in the real-data checks
+#: exactly as RadVel's own example setups do (example_planets/
+#: epic203771098.py: tc1=2072.79438, vary=False; example_planets/k2-131.py:
+#: Tc=2457582.9360 +/- 0.0011, Dai et al. 2017). HD 164922 b does not
+#: transit, so its tc is fitted.
+REAL_DATASET_TRANSIT_TC: dict[str, float] = {
+    "k2-24": 2072.79438,
+    "k2-131": 2457582.9360,
 }
 
 
@@ -211,8 +228,14 @@ def run_real_data_check(dataset_name: str, solvers: list[str] | None = None,
     dataset = load_rv_dataset(dataset_name)
     initial_guess = REAL_DATASET_INITIAL_GUESSES[dataset_name]
 
+    # P held at the registered (published) period, and tc at the measured
+    # transit time where there is one: with them free, sparse real data plus
+    # a single-planet model lets P jump to an alias (measured: K2-131 at
+    # P=3.02 d) or e run off to ~0.95 (K2-24).
     df = run_tolerance_sweep(dataset, initial_guess, solvers, tolerances,
-                             guess_name=guess_name, max_iter=max_iter)
+                             guess_name=guess_name, max_iter=max_iter,
+                             vary_period=False,
+                             fixed_tc=REAL_DATASET_TRANSIT_TC.get(dataset_name))
     df.insert(0, "dataset", dataset_name)
     return df
 
@@ -280,12 +303,17 @@ def run_reference_mcmc(dataset: pd.DataFrame, initial_guess: OrbitParams,
     # Everything else (jit, jit_<tel>, ...) is already in physical units -
     # RadVel's own parameter names -> the names used everywhere else in this
     # module (OrbitParams fields), so callers never juggle two vocabularies.
-    name_map = {"jit": "jitter"}
+    name_map = {"jit": "jitter", "per1": "P", "tc1": "tc"}
     converted = {"secosw1", "sesinw1", "logk1"}
     for name in post.name_vary_params():
         if name in converted:
             continue
-        sigma[name_map.get(name, name)] = float(chain[name].std())
+        samples = chain[name]
+        if name.startswith("jit"):
+            # Likelihood depends on jit**2 only: the chain wanders across both
+            # signs, so the std of signed samples overstates the width.
+            samples = samples.abs()
+        sigma[name_map.get(name, name)] = float(samples.std())
     return sigma
 
 
@@ -298,6 +326,8 @@ def run(config_path: str) -> pd.DataFrame:
     optionally runs one reference MCMC for posterior widths, and writes:
       - ``results/error_propagation/raw.csv``       (one row per solve)
       - ``results/error_propagation/posterior_sigma.csv``  (if run_mcmc)
+      - ``results/error_propagation/timing.csv``    (wall-clock per full
+        RadVel fit, per solver - see ``evaluation.propagation.fit_timing``)
       - ``results/error_propagation/summary.csv``   (parameter_shift,
         in units of MCMC sigma when posterior_sigma was computed) - the
         house rule in ``io/results_io.py`` ("Aggregated / summary tables go
@@ -322,6 +352,8 @@ def run(config_path: str) -> pd.DataFrame:
         guess_name=guess_name, max_iter=cfg.max_iter,
     )
     fits_df.to_csv(results_path("error_propagation", "raw.csv"), index=False)
+    if not fits_df.empty:
+        fit_timing(fits_df).to_csv(results_path("error_propagation", "timing.csv"), index=False)
 
     posterior_sigma: dict[str, float] = {}
     if cfg.extra.get("run_mcmc", True):

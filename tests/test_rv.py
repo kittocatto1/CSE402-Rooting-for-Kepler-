@@ -204,6 +204,18 @@ def test_fit_with_solver_recovers_an_injected_orbit():
         assert 2.0 < fitted.K < 9.0
 
 
+def test_fit_with_solver_reports_wall_clock_for_ours_and_native():
+    with skip_if_unimplemented():
+        real = load_rv_dataset("k2-24")
+        dataset = error_propagation.inject_synthetic_dataset(
+            real, error_propagation.INJECTED_TRUTH, seed=0)
+        timing = {}
+        fit_with_solver(dataset, error_propagation.INITIAL_GUESS, "danby", 1e-12,
+                        timing_out=timing)
+        assert timing["fit_seconds"] > 0.0
+        assert timing["native_fit_seconds"] > 0.0
+
+
 def test_fit_with_solver_handles_a_multi_instrument_dataset():
     """hd164922 has 3 real instruments - build_posterior must route this
     through CompositeLikelihood, not the single-RVLikelihood path, and with
@@ -471,6 +483,27 @@ def test_parameter_shift_matches_hand_computed_value():
     newton_loose = shifts[(shifts["solver"] == "newton") & (shifts["tolerance"] == 1e-4)].iloc[0]
     assert newton_loose["e_shift"] == pytest.approx(0.0001)
     assert newton_loose["K_shift"] == pytest.approx(0.001)
+
+
+def test_parameter_shift_picks_the_exact_reference_among_tiny_tolerances():
+    fits = pd.DataFrame([
+        {"solver": "danby", "tolerance": tol, "e": e}
+        for tol, e in [(1e-8, 0.31), (1e-10, 0.32), (1e-14, 0.30)]
+    ])
+    shifts = prop.parameter_shift(fits, reference_tol=1e-14)
+    assert shifts.loc[shifts["tolerance"] == 1e-14, "e_shift"].iloc[0] == 0.0
+    assert shifts.loc[shifts["tolerance"] == 1e-8, "e_shift"].iloc[0] == pytest.approx(0.01)
+
+
+def test_fit_timing_takes_medians_per_solver():
+    fits = pd.DataFrame([
+        {"solver": "danby", "fit_seconds": s, "native_fit_seconds": 0.1, "n_solves": 1000}
+        for s in (1.0, 2.0, 9.0)
+    ])
+    row = prop.fit_timing(fits).iloc[0]
+    assert row["median_fit_seconds"] == pytest.approx(2.0)
+    assert row["median_slowdown_vs_native"] == pytest.approx(20.0)
+    assert row["median_us_per_solve"] == pytest.approx(2000.0)
 
 
 def test_shift_in_sigma_divides_by_posterior_width():
