@@ -22,10 +22,12 @@
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{caption}
+\usepackage{placeins}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
 
 \geometry{a4paper,left=2.6cm,right=2.6cm,top=2.6cm,bottom=2.8cm}
+\setlength{\headheight}{22pt}
 
 % -------------------------------------------------------------------------
 %  PALETTE
@@ -128,6 +130,7 @@
 
 % =========================================================================
 \begin{document}
+\pagenumbering{gobble}
 
 \begin{titlepage}
 \pagecolor{Paper}
@@ -138,7 +141,7 @@
   {\color{Rule}\rule{0.55\textwidth}{0.8pt}}\\[1.1cm]
 
   {\color{Ink}\scshape\Huge Rooting for Kepler}\\[0.35cm]
-  {\color{Muted}\Large\itshape a comparative benchmark of\\[2pt] Newton-type root finders and starting guesses}\\[1.4cm]
+  {\color{Muted}\Large\itshape a numerical benchmark of\\[2pt] Kepler solvers and starting guesses}\\[1.4cm]
 
   {\color{Rule}\rule{0.32\textwidth}{0.6pt}}\\[1.1cm]
 
@@ -150,8 +153,8 @@
     evaluated on RadVel's radial-velocity fitting pipeline.\\[0.7em]
     \normalcolor\color{Ink}
     125{,}800 instrumented solves over a 7{,}400-point $(e,M)$ grid,
-    with every solver's convergence order verified against its source
-    paper before entering the benchmark.
+    with iterative solvers checked against published convergence orders
+    before entering the benchmark.
   \end{minipage}
 
   \vspace{2.0cm}
@@ -163,69 +166,72 @@
 \end{center}
 \end{titlepage}
 
-\setcounter{page}{1}
+\pagenumbering{arabic}
 
 % =========================================================================
 \section*{Summary of Findings}
 \addcontentsline{toc}{section}{Summary of Findings}
 
-The project asked whether the higher formal convergence order of recent
-with-memory Newton-type schemes survives contact with Kepler's specific
-$\sin,\cos$ cost structure and with RadVel's real operating range of
-$(e,M)$. It survives on order and on evaluation-count economy, and fails
-on the two axes that decide practical use: wall-clock time and robustness
-at high eccentricity.
+The project compares recent with-memory root finders with established
+Kepler solvers, varying both the starting guess and the orbital regime.
+Higher formal order reduces the number of iterations, but does not by
+itself imply a cheaper or more reliable solve.
 
 \begin{enumerate}
-  \item \key{The methods are correctly implemented and behave as their
-        papers claim.} Measured convergence orders reproduce the published
-        values to within $1\%$ on every test function, and each scheme's eighth-order error
-        \emph{constant} matches its paper's closed form to
-        $\leq 3.5\times10^{-22}$ relative.
-  \item \key{With-memory wins on iteration count and on the
-        Kepler-specific cost model.} NWM11 reaches tolerance in a median
-        of one iteration against Danby's two, at a median weighted cost of
-        $6.44$ against Danby's $7.88$.
-  \item \key{It loses on wall-clock time, by a factor of two to five.}
-        The interpolation that makes the method cheap in transcendental
-        calls is not free in arithmetic, and arithmetic is what the clock
-        measures.
-  \item \key{It loses badly on robustness in the pathological corner.}
-        NWM9 and NWM11 fail on $4.7\%$ and $5.2\%$ of high-eccentricity
-        points respectively, against Danby's $0.20\%$.
-  \item \key{The proposal's central cost premise does not hold in this
-        implementation.} A combined \texttt{sincos} evaluation was assumed
-        to cost about one transcendental call; measured, it costs
-        $2.44$, within timing noise of two separate calls ($2.06$). The discount the argument rests on is absent in CPython.
-  \item \key{Downstream, none of it matters.} Solver-induced shifts in the
-        fitted orbital parameters are three orders of magnitude smaller
-        than the spread caused by measurement noise in the data.
+  \item \key{The verification gates pass.} On eight test functions from
+        the NWM11 paper, measured orders agree with the published values
+        within $1\%$; the two with-memory base error constants also match
+        their respective papers. NWM9 has not yet been tested on its own
+        paper's example functions.
+  \item \key{Fewer iterations do not ensure lower cost.} With
+        selected starting guesses, NWM11 needs a median of one iteration
+        against Danby's two. Its modelled median cost is $6.34$ versus
+        $7.68$, but its \emph{mean cost among converged solves} is
+        $9.55$ versus $7.48$.
+  \item \key{The timed Python implementations favour simpler methods.}
+        On the timed subset, the median solve takes $5.25\,\mu\mathrm{s}$ for
+        NWM11 with its canonical start and $4.46\,\mu\mathrm{s}$ for Danby
+        with Napier's start. These are implementation timings, not a
+        compiled-algorithm comparison.
+  \item \key{Reliability depends on the starting guess.} Across all four
+        guesses, NWM9 and NWM11 fail on $4.27\%$ and $4.86\%$ of solves in
+        the defined hard corner, versus Danby's $0.13\%$. NWM9 with
+        Napier's start has no failures on this grid.
+  \item \key{The proposed fused-trigonometry benefit remains untested.}
+        This Python code evaluates $\sin$ and $\cos$ separately. Under
+        one-pair-per-call accounting, the representative NWM11 and Danby
+        solves both cost five calls; a compiled speed advantage cannot be
+        inferred from these data.
+  \item \key{Downstream shifts are small in the tested injection.}
+        Fitted-parameter shifts from varying solver tolerance are at least
+        about $10^3$ times smaller than the Monte Carlo spread for this
+        moderately eccentric injected orbit.
 \end{enumerate}
 
-\begin{finding}{The short answer}
-On this equation, Markley's closed-form solver is the best choice on every
-axis measured: cheapest ($3.44$), fastest, and the only method with a
-zero failure rate in the pathological corner. Among the iterative methods,
-Danby remains the right production default. The with-memory schemes are a
-genuine advance in iteration count and in transcendental-call economy, and
-that advance does not convert into wall-clock speed or reliability here.
+\begin{finding}{Practical reading of the benchmark}
+Markley is fastest on the timed grid subset and has no failures there;
+its closed-form computation is not fully captured by the trigonometric
+cost proxy. Danby remains a strong iterative baseline. The with-memory
+schemes reduce iteration counts, but this experiment does not establish a
+total-cost or wall-clock advantage over Danby.
 \end{finding}
 
 % =========================================================================
 \section{What Was Built}
 
 The deliverable is a cost-instrumented benchmark harness
-(\texttt{keplerbench}) in which every solver implements one interface,
-every experiment runs through one pipeline, and every number in this
-report is regenerated from a configuration file by a single command.
+(\texttt{keplerbench}) with a shared solver interface and configured
+experiments. The results and figures were regenerated using the commands
+below; the numerical tables in this document were then checked against
+those outputs.
 
 \subsection{Architecture}
 
-All five solvers and all four starting guesses expose identical
-interfaces, so the experiment runner loops over them blindly and no method
-can gain an advantage from a different stopping rule. Solvers never call
-\texttt{math.sin} directly; they evaluate the equation through a
-\texttt{KeplerProblem} object that records what each call actually needed
+All five solvers and four starting guesses expose the same calling
+interface. The four iterative solvers use a residual stopping test;
+Markley is a closed-form method that ignores the requested tolerance and
+starting guess. Solver evaluations pass through a
+\texttt{KeplerProblem} object that records what each call needed
 --- how many distinct points were touched, how many required a full
 $(\sin,\cos)$ pair against $\sin$ or $\cos$ alone, and how many
 derivatives were synthesised from interpolation rather than evaluated.
@@ -236,10 +242,12 @@ Reference roots come from an independent 50-digit bracketing solve in
 
 \subsection{Reproducibility}
 
-Each experiment writes its tables to \texttt{results/<experiment>/} with a
-provenance sidecar recording the configuration fingerprint, the git
-commit, and whether the working tree was clean when the numbers were
-produced. Nothing in this report was transcribed by hand.
+The benchmark and verification raw tables have provenance sidecars with
+their configuration and source commit. Several derived and downstream
+CSVs do not yet have sidecars, so the blanket provenance claim would be
+incorrect. The results used here were regenerated from implementation
+commit \texttt{48dcad1} with Python 3.12.6; the configured cost weights
+were calibrated separately on Python 3.14.7.
 
 \begin{center}
 \small
@@ -262,17 +270,15 @@ produced. Nothing in this report was transcribed by hand.
 
 \begingroup
 \small
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{1.9cm} >{\raggedright\arraybackslash}p{3.3cm} >{\raggedright\arraybackslash}p{1.05cm} >{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{1.9cm} >{\raggedright\arraybackslash}p{3.1cm} >{\raggedright\arraybackslash}p{1.25cm} >{\raggedright\arraybackslash}X@{}}
 \toprule
 \textbf{Category} & \textbf{Method} & \textbf{Order} & \textbf{Role in the benchmark} \\
 \midrule
 Baseline & Newton--Raphson & 2 & Textbook anchor; one evaluation point, one $(\sin,\cos)$ pair per iteration. \\[0.4em]
-\multirow{2}{1.9cm}{\raggedright Established Kepler solvers}
- & Danby's method & 4 & RadVel's production solver; domain-tuned to this equation. \\
+Kepler solver & Danby's method & 4 & RadVel's production solver; domain-tuned to this equation. \\
  & Markley's method & \textemdash & Closed-form solver; no iteration, constant cost. \\[0.4em]
-\multirow{2}{1.9cm}{\raggedright With-memory (2024--2025)}
- & NWM9 \newline (Mittal, Panday \& J\"antschi, 2024) & 8.8989 & Single self-accelerating parameter in the \emph{third} step of an optimal eighth-order base. \\
- & NWM11 \newline (Mittal, Panday, J\"antschi \& Bolundu\c{t}, 2025) & 10.7446 & Bi-parametric; 3 evaluation points, 1 full $(\sin,\cos)$ pair per iteration. \\[0.4em]
+With-memory & NWM9 (2024) & 8.8989 & Single self-accelerating parameter in the \emph{third} step of an optimal eighth-order base. \\
+ & NWM11 (2025) & 10.7446 & Bi-parametric; 3 evaluation points, 1 full $(\sin,\cos)$ pair per iteration. \\[0.4em]
 Guess layer & Napier's guess (2024) & n/a & Symbolic-regression start, run in front of every iterative solver. \\
 \bottomrule
 \end{tabularx}
@@ -305,9 +311,9 @@ Guess layer & Napier's guess (2024) & n/a & Symbolic-regression start, run in fr
 \section{Verification: the Gate Before the Benchmark}
 \label{sec:verify}
 
-The project's rule was that no solver enters the grid benchmark until its
-measured convergence order matches its source paper's claim. This is what separates ``the method
-underperforms'' from ``we mistyped the method''.
+The iterative solvers were checked for convergence order before the grid
+benchmark. This reduces the risk of transcription errors, but is not an
+independent proof of each implementation.
 
 \subsection{Measured convergence order}
 
@@ -378,7 +384,7 @@ mis-transcribed functions.
 
 \subsection{Two-stage verification}
 
-Freezing each scheme's self-accelerating parameters at zero must recover
+Setting each scheme's self-accelerating parameters to zero must recover
 the underlying memoryless method. Both do, measuring exactly $8.0000$ on
 all eight functions, which attributes the lift to $8.8989$ and $10.7446$
 to the memory rather than to a coincidence in the base method.
@@ -395,10 +401,10 @@ wrong. Over 4{,}975 $(e,M)$ points spanning the full range:
 \toprule
 \textbf{Solver} & \textbf{Converged} & \textbf{Wrong root} & \textbf{Max $|E-E_{\mathrm{ref}}|$} \\
 \midrule
-Newton & 99.60\% & 0 & $3.38\times10^{-10}$ \\
+Newton & 99.54\% & 0 & $3.38\times10^{-10}$ \\
 Danby  & 99.72\% & 0 & $1.65\times10^{-10}$ \\
-NWM9   & 98.15\% & 0 & $2.32\times10^{-10}$ \\
-NWM11  & 99.50\% & 0 & $2.23\times10^{-10}$ \\
+NWM9   & 98.25\% & 0 & $2.32\times10^{-10}$ \\
+NWM11  & 99.56\% & 0 & $2.23\times10^{-10}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -431,10 +437,10 @@ NWM11   & 3 & 1 & 3 & 3 & 10.7446 \\
 \end{tabular}
 \end{center}
 
-\key{The proposal's claim for NWM11 --- three evaluation points, only one
-full $(\sin,\cos)$ pair per iteration --- is confirmed by measurement.}
-Both with-memory schemes obtain three derivatives per iteration by
-interpolation rather than by evaluation.
+In the measured steady-state iteration, both with-memory schemes use
+three evaluation points but only one full $(\sin,\cos)$ pair. Three
+derivatives are synthesised by interpolation; the first iteration has
+not yet accumulated this information.
 
 \begin{note}
 \textbf{One count in this table is an artefact of the harness, not of the
@@ -448,12 +454,13 @@ uniform, so it does not distort comparisons, but it must be subtracted
 before any of these figures is quoted against a paper's table.
 \end{note}
 
-\subsection{The cost premise, measured}
+\subsection{Costing assumptions and their limits}
 
 The proposal's argument rests on a specific empirical claim: that one
 \texttt{sincos} call returns both $\sin E$ and $\cos E$ ``at roughly the
-cost of one transcendental evaluation''. Measured on the project machine,
-with $\sin$-only normalised to $1.0$:
+cost of one transcendental evaluation''. The benchmark uses the following
+configured weights, calibrated on a separate CPython 3.14.7 run and
+normalised to one $\sin$ call:
 
 \begin{center}
 \small
@@ -462,49 +469,42 @@ with $\sin$-only normalised to $1.0$:
 \textbf{Operation} & \textbf{Relative cost} & \textbf{Proposal assumed} \\
 \midrule
 $\sin$ only                      & 1.000 & 1 \\
-$\cos$ only                      & 1.06 & 1 \\
-$(\sin,\cos)$ pair               & \textbf{2.44} & $\approx 1$ \\
-Synthesised derivative (Hermite) & 1.35 & --- \\
+$\cos$ only                      & 1.04 & 1 \\
+$(\sin,\cos)$ pair               & \textbf{2.34} & $\approx 1$ \\
+Synthesised derivative (Hermite) & 1.76 & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-These are the weights every weighted cost in this report is computed with
-(\texttt{DEFAULT\_WEIGHTS} in \texttt{evaluation/cost\_model.py}). For
-example, Newton's $3.44$ per iteration is one pair plus one $\sin$. They
-are machine-dependent and noisy: a repeat measurement with
-\texttt{measure\_weights\_with\_spread} spread the pair over roughly
-$1.1$--$2.7$ across seven runs.
+These are the code's default weights; for example,
+Newton's modelled steady-state cost is $2.34+1=3.34$. The current
+Python 3.12.6 environment did not reproduce a stable derivative weight:
+the default calibration raised an error when its baseline subtraction
+gave a non-positive $\sin$ cost, and a longer retry had a wide spread.
+Thus weighted cost is an \emph{assumption-sensitive proxy}, not a
+measured runtime prediction on this machine. Starting-guess computation,
+division, roots and other arithmetic are not fully included.
 
-\begin{finding}{The sincos discount does not exist in this implementation}
-A combined $(\sin,\cos)$ evaluation costs $2.44$ against $2.06$ for two
-separate calls. Given the run-to-run spread, that difference is within
-noise: the pair costs about the same as two calls, not one. In pure Python
-there is no fused \texttt{sincos} instruction to exploit: each call
-crosses the interpreter boundary separately.
-
-This does not invalidate the proposal's reasoning, but it relocates it. In
-a compiled implementation such as RadVel's Cython kernel, where a genuine
-fused \texttt{sincos} is available, the discount is real and the
-with-memory economy would translate. In our harness it does not, and this
-is the single clearest explanation for why the methods that win on
-weighted cost lose on the clock in Section~\ref{sec:grid}.
-
-\medskip
-Both costings belong in any conclusion drawn from this work. Reporting
-only the weighted cost would overstate the with-memory case; reporting
-only the wall clock would understate it.
+\begin{finding}{A fused pair does not establish a compiled speed-up}
+The Python implementation obtains $\sin$ and $\cos$ with two separate
+calls. For the representative median solves, let $p$ be the cost of a
+pair in units of one $\sin$ call. NWM11 costs $4+p$ and Danby $3+2p$:
+at the configured $p=2.34$ the model gives $6.34$ versus $7.68$, but at
+$p=1$ both cost $5$. Even at $p=1.1$ the gap is only about $2\%$.
+Across converged solves on the \emph{whole grid}, NWM11 with its canonical
+guess has a mean modelled cost of $9.55$ versus Danby with Napier's
+$7.48$; the call-count proxy gives $6.30$ versus $4.88$. A compiled
+implementation and a direct timing comparison would be needed before
+claiming a speed advantage.
 \end{finding}
 
 \pipelinefigure{figures/cost/cost_breakdown.pdf}{1.0}{%
-Per-iteration cost under both costings. \emph{Left}: the weights measured in
-this CPython harness, where Newton, Danby and Markley each cost $3.44$ and
-both with-memory schemes $9.49$. \emph{Right}: the call count a genuine fused
-\texttt{sincos} would charge in C --- $2.00$ against $4.00$. The gap between
-the two panels is the whole of Section~\ref{sec:cost}'s argument: which
-costing you adopt changes the ratio between the classical and with-memory
-groups from $2.8\times$ to $2.0\times$. Both include the harness's own
-residual check, one $\sin$ per iteration.}
+Steady-state per-iteration proxy under configured Python weights
+(left: $3.34$ for Newton and Danby, $10.62$ for NWM9 and NWM11) and
+one-call-per-evaluation-point counting (right: $2$ and $4$). This is
+\emph{per iteration}, not per completed solve; the latter also depends on
+the number of iterations and the starting guess. Markley's non-trigonometric
+arithmetic is not represented. Both panels include one residual check.}
 
 % =========================================================================
 \section{Grid Benchmark}
@@ -518,7 +518,11 @@ guess and is run once under the label \texttt{n/a}.
 
 \subsection{Headline comparison}
 
-Each iterative solver is shown with its best-performing guess.
+Each iterative solver is shown with a start that gave strong convergence
+on this grid. Mean iterations and modelled cost use converged grid solves;
+the wall-clock column uses medians over 50 timed points, each repeated
+1000 times. The two cost columns answer different questions and should
+not be read as interchangeable.
 
 \begin{center}
 \small
@@ -526,50 +530,48 @@ Each iterative solver is shown with its best-performing guess.
 \toprule
 \textbf{Solver} & \textbf{Guess} & \textbf{Mean iter.} & \textbf{Median cost} & \textbf{Median wall (µs)} & \textbf{Converged} \\
 \midrule
-Markley & n/a       & 0.00 & \textbf{3.44} & \textbf{3} & 100.00\% \\
-NWM11   & canonical & \textbf{1.38} & 6.44 & 5 & 99.89\% \\
-NWM9    & napier    & 1.44 & 6.44 & 7 & 100.00\% \\
-Danby   & napier    & 1.94 & 7.88 & 3 & 100.00\% \\
-Newton  & napier    & 3.21 & 11.32 & 3 & 100.00\% \\
+Markley & n/a       & 0.00 & \textbf{3.34} & \textbf{3.50} & 100.00\% \\
+NWM11   & canonical & \textbf{1.38} & 6.34 & 5.25 & 99.93\% \\
+NWM9    & napier    & 1.44 & 6.34 & 6.52 & 100.00\% \\
+Danby   & napier    & 1.94 & 7.68 & 4.46 & 100.00\% \\
+Newton  & napier    & 3.21 & 11.02 & 4.40 & 100.00\% \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Three separate stories are visible in those columns.
+The median does not describe the costly tail.
 
 \key{Iteration count.} NWM11 needs a median of one iteration where Danby
-needs two and Newton needs three or four. The higher order is real and it
-shows up exactly where theory says it should.
+needs two and Newton needs three. This is consistent with the measured
+convergence orders, but most one-iteration solves cannot benefit from
+recycled information from a previous iteration.
 
-\key{Weighted cost.} On the Kepler-specific currency the proposal argued
-for, the with-memory schemes beat Danby: $6.44$ against $7.88$, about
-$18\%$ cheaper. \emph{This is the proposal's hypothesis being confirmed.}
+\key{Weighted cost.} The chosen NWM11 median is $6.34$ against Danby's
+$7.68$, about $17\%$ lower under the configured weights. Their means
+reverse the ordering: $9.55$ against $7.48$. Under one-call-per-point
+counting the means are $6.30$ against $4.88$. The median alone therefore
+does not establish an overall cost advantage.
 
-\key{Wall-clock time.} The ranking inverts. Markley, Danby and Newton all
-land at 3\,µs per solve; NWM9 and NWM11 take 5--8\,µs, and NWM11 with the
-weakest guess takes 17\,µs. The interpolation machinery costs no
-transcendental calls but a great deal of arithmetic, and the weighted cost
-model --- by construction --- does not count arithmetic.
+\key{Wall-clock time.} On this Python implementation and timed subset,
+NWM11 and NWM9 with the displayed guesses take about $1.2$ and $1.5$
+times Danby's median time. A weak simple start makes NWM9 much slower
+($17.69\,\mu\mathrm{s}$); runtime is not fixed by the solver name alone.
 
 \subsection{The guess layer}
 
-The starting guess is a larger effect than the choice of iteration for the
-weaker solvers. Newton's mean iteration count moves from $3.83$ with
-$E_0 = M$ to $3.21$ with Napier's formula, and its convergence rate from
-$99.84\%$ to $100\%$. For NWM9 the effect on reliability is starker:
-$99.39\%$ with the simple start against $100\%$ with Napier's.
+The starting guess can change both iteration count and reliability.
+Newton's mean count on converged solves moves from $3.84$ with $E_0=M$
+to $3.21$ with Napier's formula, and convergence rises from $99.88\%$ to
+$100\%$. NWM9 changes from $99.43\%$ with the simple start to $100\%$
+with Napier's. The guess cost itself is excluded from the modelled cost
+counters but included in wall-clock timing.
 
-This vindicates the proposal's decision to treat the guess as an
-independent experimental factor: reporting NWM9 with a poor start would
-have understated it substantially.
+This is why the guess is treated as an independent experimental factor.
 
 \pipelinefigure{figures/grid/guess_effect.pdf}{0.62}{%
-Mean iterations saved against the baseline $E_0 = M$ start. The effect is
-largest for NWM9 and Newton and smallest for Danby, which is already
-domain-tuned: a better start buys least where the iteration is best. Napier's
-formula is the strongest of the three for Newton and NWM9. RadVel's saves
-least for Danby, Newton and NWM11, but not for NWM9, where the canonical
-start is the weakest.}
+Mean iterations saved against $E_0=M$ on the full grid. Napier's guess
+has the largest improvement for Newton and NWM9; NWM11 instead has its
+lowest mean count with the canonical guess.}
 
 \pipelinefigure{figures/convergence/residual_histories.pdf}{1.0}{%
 Residual histories at a typical $(e,M)$ and in the pathological corner.
@@ -577,71 +579,69 @@ Both with-memory schemes reach the double-precision floor in two
 iterations against Newton's four to five. The shaded band marks the floor
 below which a curve measures rounding rather than convergence.}
 
-\pipelinefigure{figures/grid/iterations_heatmaps.pdf}{1.0}{%
-Iterations to tolerance across the $(e,M)$ plane, one panel per
-solver--guess pair on a shared colour scale. Newton with the simple start is
-the clearest case of the pathological corner: a bright high-iteration wedge
-at large $e$ and small $M$ that the other methods largely avoid. Markley is
-uniformly dark --- constant cost, no iteration. White cells were not
-sampled; the sparse right-hand half of each panel is the random RadVel block,
-which extends past $M = \pi$ where the uniform block stops.}
+\pipelinefigure{figures/grid/iterations_heatmaps.pdf}{0.78}{%
+NWM9 iterations with the simple and Napier starts on the complete uniform
+$50\times100$ grid ($0\leq e\leq0.99$, $0\leq M\leq\pi$), on a shared
+colour scale. The simple start has a much larger high-iteration region;
+the logarithmically sampled extreme corner is shown separately in the
+failure maps.}
 
 \pipelinefigure{figures/cost/cost_vs_accuracy.pdf}{1.0}{%
-\emph{Left}: accuracy against weighted cost per solve. Every method reaches
-the same $\approx 15.8$ correct digits, so the axis that separates them is
-cost, not accuracy --- which is the empirical form of the argument in
-Section~\ref{sec:downstream}. \emph{Right}: the generic efficiency index
-$\rho^{1/\gamma}$ against the Kepler costing. The two disagree in rank
-order: the generic index places NWM9 and NWM11 highest, while on median
-correct digits per call Newton leads. This is precisely the mismatch the
-proposal predicted the generic index would exhibit on this equation.}
+\emph{Left}: attained accuracy against modelled cost per solve; successful
+methods commonly reach the double-precision floor. \emph{Right}: the
+generic order-per-call index against median cost per correct digit.
+Newton does not lead on this measure: its median is $0.70$, versus $0.42$
+for NWM11 and $0.48$ for Danby. The two rankings are broadly similar;
+this experiment does not show the large rank reversal anticipated in the
+proposal. The digit calculation includes exact-reference hits at the
+project's 16-digit ceiling.}
 
 % =========================================================================
+\FloatBarrier
 \section{Robustness}
 \label{sec:robust}
 
-Failure rates split by region, where the pathological corner is defined
-once for the whole project as $e > 0.9$ and $M < 0.1$.
+Failure rates split by region. The current analysis code defines the
+hard corner as $e>0.9$ and $M<0.1$; boundary samples at exactly $0.9$
+or $0.1$ are classified as ordinary. Counts below are \emph{solves}
+across four guesses for each iterative method, not distinct grid points.
 
 \begin{center}
 \small
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Solver} & \textbf{Corner points} & \textbf{Corner failure} & \textbf{Ordinary points} & \textbf{Ordinary failure} \\
+\textbf{Solver} & \textbf{Corner solves} & \textbf{Corner failure} & \textbf{Ordinary solves} & \textbf{Ordinary failure} \\
 \midrule
-Markley & 381  & \textbf{0.000\%} & 7{,}019  & \textbf{0.000\%} \\
-Danby   & 1{,}524 & 0.197\% & 28{,}076 & 0.004\% \\
-Newton  & 1{,}524 & 0.919\% & 28{,}076 & 0.025\% \\
-NWM9    & 1{,}524 & 4.724\% & 28{,}076 & 0.057\% \\
-NWM11   & 1{,}524 & \textbf{5.249\%} & 28{,}076 & \textbf{0.000\%} \\
+Markley & 381  & 0.000\% & 7{,}019  & 0.000\% \\
+Danby   & 1{,}524 & 0.131\% & 28{,}076 & 0.000\% \\
+Newton  & 1{,}524 & 0.919\% & 28{,}076 & 0.018\% \\
+NWM9    & 1{,}524 & 4.265\% & 28{,}076 & 0.057\% \\
+NWM11   & 1{,}524 & 4.856\% & 28{,}076 & 0.000\% \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\begin{finding}{Where the with-memory methods actually lose}
-In the ordinary operating region NWM11 is flawless --- zero failures in
-28{,}076 solves, better than Danby. In the pathological corner it fails
-$5.2\%$ of the time, roughly \textbf{25 times} Danby's rate.
+\begin{finding}{Robustness is a solver--guess result}
+NWM11 has no failures in the ordinary region, but 74 failed solves in
+the hard corner across its four guesses. Its canonical guess fails on
+5 of 381 corner points; its RadVel guess fails on 35. NWM9 with
+Napier's guess has no failures anywhere on this grid, despite 81 failed
+solves for NWM9 across all guesses.
 
-The mechanism is structural rather than incidental. Both schemes place a
-self-accelerating parameter additively on a denominator, and as
-$e \rightarrow 1$ with $M \rightarrow 0$ the derivative
-$f'(E) = 1 - e\cos E$ collapses towards zero. The parameter, tuned on the
-assumption that the iterate is already near the root, then perturbs a
-denominator that is itself nearly zero.
-
-This is confirmed by construction: with the parameter frozen at zero, the
-memoryless base methods converge at points where the with-memory versions
-diverge. The failure is caused by the memory, not by the base scheme.
+The small derivative $f'(E)=1-e\cos E$ makes this corner difficult.
+Freezing the accelerating parameters can improve some failures, but
+that changes both their initial values and the recycling rule. The
+current experiment does not isolate memory recycling as the sole cause
+of failure; the starting guess is clearly important.
 \end{finding}
 
 \pipelinefigure{figures/grid/failure_maps.pdf}{1.0}{%
 Where each solver fails, on logarithmic axes in $1-e$ and $M$ so the
-pathological corner occupies the top left rather than a sliver. Failures are
-almost entirely confined to that corner. The totals track the regional rates
-above: Markley $0$, Danby $4$, Newton $21$, NWM11 $68$, NWM9 $78$. Points at
-exactly $e=0$ or $M=0$ cannot be drawn on log axes and are noted in each
-panel title.}
+pathological corner occupies the top left rather than a sliver. The map
+marks a \emph{distinct point} if any guess fails there: Markley $0$,
+Danby $2$, Newton $19$, NWM11 $65$, NWM9 $74$. These need not equal the
+failed-solve counts in the table. Points at exactly $e=0$ or $M=0$
+cannot be drawn on log axes.}
 
 \subsection{Order across the eccentricity range}
 
@@ -663,25 +663,22 @@ NWM11  & 11.233 & 10.716 & 10.728 & 10.756 & 10.876 & 10.839 & 10.733 & 10.739 &
 \end{tabular}
 \end{center}
 
-\key{NWM11 holds its claimed order of 10.7446 across the entire
-eccentricity range}, including the corner where it also fails most often
---- when it converges there, it converges at full order. Danby is likewise
-immovable at 4.000.
+Along this $M=0.3$ slice, NWM11's measured order remains near its
+claimed $10.7446$ up to $e=0.999$; Danby's is 4.000. This test does
+not establish the same behaviour as $M\rightarrow0$.
 
-NWM9 degrades monotonically beyond $e \approx 0.99$, falling to $0.365$
-at $e = 0.999$: sub-linear, effectively a different algorithm. Two
-caveats apply. The value at $e = 0.9$ ($2.820$) is \emph{not} part of that
-trend --- its neighbours at $0.7$ and $0.95$ are both $\approx 8.9$ --- and
-a non-monotonic dip that recovers is far more likely an estimator artefact
-at a single point than a property of the method. Newton's missing entry at
-$e = 0.995$ and its $1.786$ at $e = 0.999$ are the same kind of artefact;
-Newton's order does not genuinely change.
+NWM9's estimated order drops beyond $e=0.95$ in this slice. However,
+each extreme estimate uses only a few pre-floor errors, the dip at
+$e=0.9$ recovers immediately, and no independent implementation of NWM9
+has been checked here. These are observations about the estimator and
+implementation, not proof that the mathematical scheme changes order.
+Newton's missing or low extreme-$e$ estimates have the same resolution
+caveat.
 
 \pipelinefigure{figures/convergence/order_vs_eccentricity.pdf}{0.92}{%
-Measured order against eccentricity. Dotted lines mark each method's
-claimed order; hollow markers indicate estimates the measurement could not
-resolve. NWM11 tracks its claim across the full range while NWM9 collapses
-beyond $e \approx 0.99$.}
+Measured order at $M=0.3$. Dotted lines mark published orders; hollow
+markers identify estimates with limited resolution. NWM9's extreme-$e$
+estimates need independent verification.}
 
 \pipelinefigure{figures/convergence/measured_vs_claimed_order.pdf}{0.86}{%
 Measured convergence order against each source paper's claim, on the
@@ -689,6 +686,7 @@ NWM11 paper's eight test functions (used for every solver). Error bars show the 
 functions.}
 
 % =========================================================================
+\FloatBarrier
 \section{Downstream: Does Any of It Matter?}
 \label{sec:downstream}
 
@@ -698,21 +696,21 @@ solvers patched into RadVel in place of its own compiled solver. A call
 counter asserts after every fit that the patch actually fired.
 
 \key{Design: injection-recovery on real cadence.} The observation times,
-the per-point uncertainties and the three-instrument structure are the
-real HD~164922 data (401 HIRES points). The velocities are
+the per-point uncertainties and the three-instrument structure come from
+401 HD~164922 measurements. The velocities are
 \emph{not}: they are replaced by a known, moderately eccentric orbit
 ($P = 20.885258$\,d, $e = 0.35$, $\omega = 1.0$\,rad, $K = 5$\,m\,s$^{-1}$)
 plus Gaussian noise at the real uncertainties. Fitting HD~164922's own
 velocities with a single-planet model would give a near-circular,
-optimiser-dependent eccentricity (it has four planets), and near $e=0$
-the Kepler solve barely matters, so the study would measure nothing. The
-injection also gives a known answer to recover. The fit varies $P$, the
+optimiser-dependent eccentricity in a one-planet fit (the system has four
+planets). The injection instead provides a known answer to recover. The
+fit varies $P$, the
 time of conjunction, $\sqrt{e}\cos\omega$, $\sqrt{e}\sin\omega$ and
 $\log K$ (RadVel's recommended basis), plus one jitter term per
 instrument. Before the final fit, a 30-point multi-start over $(e,\omega)$
 using RadVel's native solver picks the starting point. The fit recovers
-$e = 0.342$, $\omega = 0.997$ and $K = 5.03$, all within $0.5\sigma$ of the
-injected values, identically for all five solvers. Each fit performs about
+$e\approx0.342$, $\omega\approx0.997$ and $K\approx5.03$, close to the
+injected values for all five solvers. Each fit performs about
 $1.3\times10^{5}$ Kepler solves.
 
 \subsection{Cost of a full fit}
@@ -723,11 +721,11 @@ $1.3\times10^{5}$ Kepler solves.
 \toprule
 \textbf{Solver} & \textbf{Median fit (s)} & \textbf{Slowdown vs.\ native} & \textbf{µs per solve} \\
 \midrule
-Newton  & 1.32 & 16.2$\times$ &  9.84 \\
-Danby   & 1.38 & 17.0$\times$ & 10.41 \\
-Markley & 1.43 & 17.6$\times$ & 11.18 \\
-NWM11   & 1.87 & 22.6$\times$ & 14.43 \\
-NWM9    & 2.25 & 27.9$\times$ & 16.86 \\
+Newton  & 0.95 & 17.3$\times$ & 7.12 \\
+Danby   & 1.03 & 18.5$\times$ & 7.35 \\
+Markley & 1.00 & 22.3$\times$ & 7.68 \\
+NWM11   & 1.23 & 27.8$\times$ & 9.24 \\
+NWM9    & 1.35 & 30.6$\times$ & 9.69 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -735,24 +733,19 @@ NWM9    & 2.25 & 27.9$\times$ & 16.86 \\
 Medians over the six tolerances (\texttt{results/error\_propagation/timing.csv}).
 Only the fit made with the solver under test is timed, not the multi-start
 search. ``Native'' is the identical fit, from the same starting point,
-using RadVel's compiled solver (about $0.08$\,s). Each fit was timed once,
-so differences below about $0.2$\,s are noise.
+using RadVel's compiled solver (about $0.04$--$0.05$\,s in this run).
+Each fit was timed once, so small differences are not reliable rankings.
 
-The slowdown against RadVel's native solver is dominated by the
-scalar-Python bridge --- our solvers are scalar and RadVel passes arrays
---- so these figures compare our implementations against each other, not
-against production code. On that basis the with-memory schemes are again
-the slowest, consistent with Section~\ref{sec:grid}.
+The slowdown against native RadVel includes Python-to-scalar conversion:
+our solvers are scalar and RadVel passes arrays. This does not
+isolate algorithmic speed from implementation overhead. On this setup,
+the with-memory fits take longer than the classical ones.
 
 \pipelinefigure{figures/cost/wallclock_vs_cost.pdf}{0.72}{%
-Median wall-clock time against the weighted cost model, one point per
-solver--guess--region combination. The two track each other closely across
-the full range --- Pearson $r = 0.97$, fitted at $3.15$\,\textmu s per unit
-cost --- so the cost model is a good predictor of time \emph{in aggregate}.
-That coexists with the median ranking in Section~\ref{sec:grid} inverting
-between the two measures, because the with-memory schemes sit at low cost and
-high per-iteration overhead simultaneously: a strong overall correlation does
-not force the ordering to agree at any particular point.}
+One point per timed $(e,M)$ solve and solver--guess pair ($850$ points).
+Pearson $r\approx0.99$ is dominated by five very slow corner solves;
+without them it falls to $0.83$, and the full-sample rank correlation is
+$0.49$. The proxy does not reliably rank ordinary solves by runtime.}
 
 \subsection{The error budget}
 
@@ -766,10 +759,10 @@ how it compares to the two uncertainties that are already present.
 \textbf{Parameter} & \textbf{Solver shift} & \textbf{Noise spread} & \textbf{MCMC posterior} & \textbf{Noise / solver} \\
  & \footnotesize(worst case) & \footnotesize(Monte Carlo) & \footnotesize($1\sigma$) & \\
 \midrule
-$P$ (d)  & $1.2\times10^{-8}$ & $5.04\times10^{-4}$ & $6.36\times10^{-4}$ & $4.3\times10^{4}$ \\
+$P$ (d)  & $1.0\times10^{-8}$ & $5.04\times10^{-4}$ & $6.44\times10^{-4}$ & $5.1\times10^{4}$ \\
 $e$      & $1.1\times10^{-5}$ & $1.65\times10^{-2}$ & $1.75\times10^{-2}$ & $1.5\times10^{3}$ \\
-$\omega$ (rad) & $2.2\times10^{-5}$ & $5.03\times10^{-2}$ & $5.52\times10^{-2}$ & $2.2\times10^{3}$ \\
-$K$ (m\,s$^{-1}$) & $3.5\times10^{-5}$ & $9.93\times10^{-2}$ & $1.03\times10^{-1}$ & $2.8\times10^{3}$ \\
+$\omega$ (rad) & $2.3\times10^{-5}$ & $5.03\times10^{-2}$ & $5.59\times10^{-2}$ & $2.2\times10^{3}$ \\
+$K$ (m\,s$^{-1}$) & $3.5\times10^{-5}$ & $9.93\times10^{-2}$ & $1.04\times10^{-1}$ & $2.8\times10^{3}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -778,102 +771,87 @@ The solver shift is the largest absolute shift over all five solvers and
 all tolerances, measured from each solver's own $10^{-14}$ fit. In every
 parameter that worst case is Newton at $10^{-4}$. The noise spread is the
 standard deviation over 50 refits of fresh noise realisations. The MCMC
-width comes from one RadVel run with the native solver (2000 steps).
+width comes from one RadVel run with the native solver, configured with
+\texttt{nrun=2000}; RadVel's convergence checks may extend the total run.
 
-\begin{finding}{Solver choice is not a source of error in practice}
-Even at the loosest tolerance tested ($10^{-4}$, far looser than any
-sensible production setting), the shift a solver induces in the fitted
-parameters is \textbf{three orders of magnitude smaller} than the scatter
-caused by measurement noise in the data. The noise-driven spread
-independently reproduces RadVel's own MCMC posterior width to within
-$10\%$ for $e$, $\omega$ and $K$ ($26\%$ for $P$), which is a useful
-consistency check on the Monte Carlo study itself.
+\begin{finding}{Numerical precision is not limiting in this injection}
+For this $e=0.35$ injected orbit, even the loosest tested tolerance
+($10^{-4}$) gives parameter shifts at least about $10^3$ times smaller
+than the spread across 50 noisy refits. Newton at $10^{-4}$ has the
+largest observed effect, $6.3\times10^{-4}\sigma$ in $e$. At other
+settings the shifts are at most about $1.1\times10^{-5}\sigma$; their
+non-monotonic variation is compatible with fit/optimiser resolution and
+is best treated as an upper bound on solver effects. Markley ignores
+the tolerance, so its six fits are identical; the $10^{-14}$ row is zero
+by construction for every solver.
 
-Newton at $10^{-4}$ is the only setting with a genuine solver effect
-($6\times10^{-4}\sigma$ in $e$). As a second-order method it stops with an
-error in $E$ of about $10^{-4}$. Danby, NWM9 and NWM11 are already at full
-double precision by the time they pass even a $10^{-4}$ residual check,
-and Markley ignores the tolerance entirely, so its six fits are
-bit-identical. At every other setting the shift is at most $2\times10^{-5}\sigma$ and does
-not shrink as the tolerance tightens. That residue is the resolution floor
-of RadVel's Powell optimiser (\texttt{xtol}$\,=10^{-8}$), not solver error,
-so the study bounds the solver effect there rather than measuring it. The
-shift at $10^{-14}$ is zero by construction, since that is the reference.
-
-\medskip
-The practical consequence: \emph{choose the Kepler solver for speed and
-robustness, not for accuracy.} Accuracy stopped being the binding
-constraint long before it reached the astronomy.
+The Monte Carlo spread and MCMC posterior width have similar scales in
+this example, but they are different distributions: repeated noisy
+refits measure estimator sampling variation, whereas MCMC conditions
+on the observed data and priors. Agreement is a check of scale, not an
+expectation that the two distributions coincide.
 \end{finding}
 
 \pipelinefigure{figures/propagation/amplification.pdf}{0.62}{%
 The amplification $\mathrm{d}\nu/\mathrm{d}E$ carrying solver error from the
 eccentric anomaly into the true anomaly. Near-circular orbits pass error
 through roughly unchanged; at $e = 0.99$ the factor exceeds $14$ at the ends
-of the range. This is the mechanism by which a solver error could in
-principle matter --- and the measured budget below is what shows it does
-not.}
+of the range. This illustrates a possible sensitivity; the downstream
+fit experiment used $e=0.35$, not $e=0.99$.}
 
 \pipelinefigure{figures/propagation/tolerance_vs_parameter_shift.pdf}{1.0}{%
 Shift in each fitted parameter as the solver tolerance is loosened, in units
 of the MCMC posterior $\sigma$. The dotted guides mark $1\sigma$ and
-$0.1\sigma$. Every curve stays at least three orders of magnitude below
-$1\sigma$ across the whole sweep. Only Newton at $10^{-4}$ rises clearly
-above the $\sim10^{-5}\sigma$ optimiser floor. Hollow markers are shifts of
-exactly zero: Markley at every tolerance, and every solver at $10^{-14}$,
-the reference.}
+$0.1\sigma$. All plotted shifts are below $10^{-3}\sigma$ for this
+injected orbit. Hollow markers denote zero shifts: Markley at every
+tolerance and every solver at the $10^{-14}$ reference.}
 
 \pipelinefigure{figures/propagation/error_budget.pdf}{0.78}{%
-The three-way budget on a log scale: solver-induced shift against
-noise-driven spread against the MCMC posterior width. The second and third
-bars agree closely for every parameter, which is an independent check on the
-Monte Carlo study; the first is smaller by three orders of magnitude.}
+Solver-induced shift, repeated-noise spread and MCMC posterior width for
+the injected orbit. The latter two have similar scales but different
+statistical meanings; the maximum solver shift is at least three orders
+of magnitude smaller than the noise spread.}
 
 \subsection{Real-data checks}
 
-Because the main study uses injected velocities, all five solvers were
-also fitted to three datasets' \emph{real}, unmodified velocities. These
-checks test agreement between solvers, not recovery of a known orbit.
-For the two transiting planets the period and transit time come from
-photometry and are held fixed, as in RadVel's own example setups:
+The main study uses injected velocities, so we also fitted all five
+solvers to three datasets' \emph{real}, unmodified velocities at
+one tight tolerance. This separate check tests agreement between
+solvers, not recovery of a known orbit. For the two transiting planets,
+period and transit time are held fixed from external measurements:
 \begin{itemize}
   \item K2-24~b: $P = 20.885258$\,d, $t_c = 2072.79438$.
   \item K2-131~b: $P = 0.3693038$\,d, $t_c = 2457582.9360$ [9].
 \end{itemize}
-HD~164922~b does not transit, so only its period ($1207$\,d) is fixed. Left
-free, sparse real data let the fit wander: $P$ jumped to an alias for
-K2-131 ($3.02$\,d), and $e$ ran off to $\approx 0.95$ for K2-24.
+HD~164922~b does not transit, so only its period ($1207$\,d) is fixed.
+The fits use the same basis and starting-point search for every solver.
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrrrc@{}}
+\begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Dataset} & \textbf{Points} & \textbf{Fitted $e$} & \textbf{Spread across 5 solvers} & \textbf{Better than circular?} \\
+\textbf{Dataset} & \textbf{Points} & \textbf{Fitted $e$ (approximately)} \\
 \midrule
-K2-131 (1 planet)    & 70  & 0.135 & $2.8\times10^{-6}$ & no ($\Delta\ln\mathcal{L} \approx 0.00$) \\
-HD~164922 (4 planets) & 401 & 0.122 & $1.5\times10^{-8}$ & marginally ($0.08$) \\
-K2-24 (2 planets)    & 32  & 0.908 & $7.1\times10^{-9}$ & no ($-0.11$) \\
+K2-131 (1 planet)    & 70  & 0.135 \\
+HD~164922 (4 planets) & 401 & 0.122 \\
+K2-24 (2 planets)    & 32  & 0.908 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-All five solvers agree to within $3\times10^{-6}$ in $e$ on every real
-dataset. The fitted eccentricities themselves are not orbit measurements:
-\begin{itemize}
-  \item \textbf{K2-131:} $e \approx 0.13$ fits the data exactly as well as
-        the published, tidally circularised $e \approx 0$. The RV data
-        alone cannot separate them.
-  \item \textbf{HD~164922 and K2-24:} both are multi-planet systems fitted
-        with a single-planet model. For K2-24 the optimiser lands at a
-        high-$e$ solution slightly \emph{worse} than a circular orbit.
-\end{itemize}
+The five solver outputs agree to the displayed precision. HD~164922 and
+K2-24 are multi-planet systems fitted here with one planet, so the
+reported eccentricities should not be interpreted as new measurements
+of their orbits. These direct checks were rerun separately from the
+configured injection experiment; their 15 fit rows are saved with the
+experiment evidence as \texttt{real\_data\_checks.csv}.
 
 % =========================================================================
+\FloatBarrier
 \section{Synthesis}
 
-Returning to the question the proposal posed --- under which conditions of
-eccentricity, mean anomaly, and Kepler-specific evaluation cost is each
-class of method preferable?
+The results separate formal convergence, completed-solve cost and the
+effect on a fitted orbit:
 
 \begin{center}
 \small
@@ -881,65 +859,60 @@ class of method preferable?
 \toprule
 \textbf{Axis} & \textbf{Verdict} \\
 \midrule
-Convergence order & With-memory wins decisively and as advertised. NWM11 measures 10.76 against Danby's 4.00, and holds it across the whole eccentricity range. \\
-Iteration count & With-memory wins: a median of 1 iteration against Danby's 2 and Newton's 3--4. \\
-Kepler-specific weighted cost & With-memory wins, $6.44$ against $7.88$ --- about $18\%$ cheaper than RadVel's production solver. \\
-Wall-clock time & With-memory \emph{loses}, by 2--5$\times$. The interpolation is free in transcendental calls and expensive in arithmetic. \\
-Robustness, ordinary region & Tie, or a slight with-memory win: NWM11 records zero failures in 28{,}076 solves. \\
-Robustness, pathological corner & With-memory \emph{loses} badly: $5.2\%$ failure against Danby's $0.20\%$. \\
-Downstream accuracy & Irrelevant. All methods are $10^{3}$ times more accurate than the data justify. \\
+Convergence order & On the generic verification functions, NWM11 measures 10.76 versus Danby's 4.00. Its order on Kepler was also near the published value along the tested $M=0.3$ slice. \\
+Iteration count & Selected NWM11 and NWM9 starts have a median of one iteration versus Danby's two. \\
+Modelled cost & The selected NWM11 median is $6.34$ versus $7.68$ for Danby, but the corresponding converged-solve means are $9.55$ versus $7.48$; the weights are machine-sensitive. \\
+Python wall-clock & Timed-grid medians for those starts are $5.25$ and $4.46\,\mu\mathrm{s}$ per solve. Full-fit medians also favour the simpler implementations on this setup. \\
+Robustness & Failures concentrate near $e\rightarrow1$, $M\rightarrow0$ and depend strongly on the guess. NWM9 with Napier has none on this grid. \\
+Downstream fit & For one injected $e=0.35$ orbit, the largest parameter shifts are at least about $10^3$ below the repeated-noise spread. \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-The trade-off falls exactly where the proposal anticipated it might --- the
-newer variants win on order and iteration count and lose on per-iteration
-cost and high-eccentricity robustness --- but with one result that was not
-anticipated. \key{The Kepler-specific cost advantage, which was the
-project's whole reason for expecting the with-memory schemes to compete,
-is real in the cost model and absent from the clock.} The model assumes a
-\texttt{sincos} discount that this implementation does not provide.
+The proposal's numerical-cost hypothesis is therefore only partly
+supported: fewer iterations and a lower \emph{selected median} proxy do
+not translate into a lower average cost or a Python runtime win. A fused
+pair would erase the representative median proxy gap at $p=1$; compiled
+speed remains an experiment to perform, not a conclusion of this one.
 
-That is not a negative result about the methods. It is a statement about
-where they would pay off: in a compiled kernel with a genuine fused
-\texttt{sincos}, the $18\%$ weighted-cost advantage should convert into
-real time. Testing that claim requires a compiled implementation and is
-the natural continuation of this work.
-
-Markley's closed-form solver, meanwhile, was the quiet winner throughout:
-cheapest on the cost model at $3.44$, joint-fastest on the clock, and the
-only method in the study with a zero failure rate anywhere on the grid.
+Markley has the lowest trigonometric proxy ($3.34$) and fastest median
+on the timed grid subset, but the proxy omits some of its arithmetic and
+its closed-form interface does not enforce the iterative tolerance.
+Six iterative solver--guess pairs also have zero failures on this grid.
+Danby remains the appropriate production reference among the iterative
+methods studied here.
 
 % =========================================================================
 \section{Threats to Validity}
 
 \begin{enumerate}
-  \item \key{Pure-Python arithmetic.} Every wall-clock figure is measured
-        through the CPython interpreter, where arithmetic is expensive
-        relative to transcendental calls and no fused \texttt{sincos}
-        exists. This is the single largest threat, and it works
-        specifically against the with-memory schemes.
+  \item \key{Implementation and calibration.} Wall-clock timing compares
+        scalar Python implementations, not compiled kernels. The cost
+        proxy uses weights calibrated under Python 3.14.7, whereas this
+        rerun used Python 3.12.6; local recalibration was unstable. It
+        also omits starting-guess cost and some non-trigonometric work.
   \item \key{The residual-evaluation artefact.} The shared loop's own
         $f(E)$ call inflates every solver's $\sin$-only count by one per
         iteration. It is uniform across methods and does not affect
-        rankings, but the absolute per-iteration figures in
-        Section~\ref{sec:cost} are one $\sin$ high.
+        some rankings, but the absolute per-iteration figures in
+        Section~\ref{sec:cost} are one $\sin$ high. Markley is not subject
+        to the same tolerance stopping test as the iterative solvers.
   \item \key{One injected orbit.} The error-propagation and Monte Carlo
-        studies use a single injected, moderately eccentric orbit
-        ($e = 0.35$) on HD~164922's real cadence and noise, not HD~164922's
-        own velocities. The three-orders-of-magnitude margin is wide enough
-        that the conclusion is unlikely to depend on this choice. However,
-        higher-eccentricity injections, where $\mathrm{d}\nu/\mathrm{d}E$
-        is largest, were not run. The real-data checks on three systems
-        test only whether the solvers agree with each other.
+        studies use one injected orbit ($e=0.35$) on HD~164922's real
+        cadence and uncertainties, not its own velocities. High-$e$
+        injections were not run; the real-data checks only establish
+        agreement among solvers under the selected fit model.
   \item \key{Optimiser resolution floor.} Below tolerance $10^{-4}$ the
-        measured shifts ($\lesssim 2\times10^{-5}\sigma$) are set by the
-        stopping precision of RadVel's Powell fit. They are an upper bound
-        on the solver's effect, not a measurement of it.
-  \item \key{Small MCMC budget.} The posterior widths come from a single
-        2000-step MCMC run, which is not seeded, so they vary by a few per
-        cent between runs. They agree with the Monte Carlo spread,
-        but are not publication-grade on their own.
+        measured shifts (outside Newton at $10^{-4}$, at most about
+        $1.1\times10^{-5}\sigma$) are compatible with optimiser noise;
+        they bound rather than directly measure solver effects.
+  \item \key{Uncertainty estimates.} The Monte Carlo sample has only 50
+        realisations. The MCMC width comes from one RadVel run configured
+        with \texttt{nrun=2000}; RadVel may extend the total run to satisfy
+        mixing checks. Sampling spread and posterior width need not match.
+  \item \key{Region and provenance.} The hard-corner classifier excludes
+        its boundary samples. Several derived/downstream CSVs lack
+        provenance sidecars, although the benchmark raw data has one.
   \item \key{Estimator artefacts at extreme eccentricity.} Several entries
         in the order-versus-eccentricity table are measurement artefacts
         rather than method behaviour, as noted in
@@ -954,29 +927,22 @@ only method in the study with a zero failure rate anywhere on the grid.
 % =========================================================================
 \section{Conclusion}
 
-Five root finders were implemented against one instrumented interface,
-each verified against its source paper's convergence order and error
-constant before being benchmarked, then run over 125{,}800 solves spanning
-the full $(e,M)$ range and traced downstream into refitted orbital
-parameters.
+Five Kepler solvers were checked through one instrumented harness over
+125{,}800 solves. The iterative implementations passed the project's
+order and correctness gates on the selected verification sets, but NWM9
+still needs a check on its own paper's examples and an independent
+implementation at extreme eccentricity.
 
-The 2024--2025 with-memory schemes do what their papers claim. On Kepler's
-equation they reach tolerance in fewer iterations than any iterative
-alternative and, on the Kepler-specific cost model the proposal argued
-for, they are about $18\%$ cheaper than RadVel's production solver. That
-advantage does not survive translation into wall-clock time in a
-pure-Python implementation, because the cost model's central assumption
---- a cheap fused \texttt{sincos} --- does not hold there. They are also
-markedly less reliable in the high-eccentricity corner, by a structural
-mechanism traced to the accelerating parameter itself.
+The newer with-memory schemes need fewer iterations with suitable
+starts. Their selected median proxy cost is lower than Danby's, while
+their average proxy cost and measured Python runtime are higher.
+Reliability in the hard corner depends strongly on the starting guess;
+it cannot be attributed to memory alone from the present evidence.
 
-For RadVel's actual operating range the practical recommendation is
-unchanged: Danby, or Markley where a closed form is acceptable. The
-with-memory schemes are worth revisiting in a compiled kernel, where the
-cost structure the proposal described genuinely exists.
-
-The outcome was not fixed in advance, and it did not come out uniformly in
-either direction. That was the point.
+In the one injected-orbit fit studied here, solver-tolerance changes are
+small compared with noise-driven parameter spread. Danby is a sound
+iterative production baseline for this implementation. Whether a
+compiled version of either newer method is faster remains untested.
 
 \vspace{1.4em}
 \dividerline

@@ -1,0 +1,5 @@
+solver,claimed_order,measured_order_mean,measured_order_min,measured_order_max,n_functions,n_functions_passed,order_check_passed,kepler_n_points,kepler_fraction_converged,kepler_n_wrong_root,kepler_max_abs_error,kepler_check_passed,passed
+newton,2.0,2.0,2.0,2.0,8,8,True,4975,0.9953768844221106,0,3.377569092466448e-10,True,True
+danby,4.0,4.0,4.0,4.0,8,8,True,4975,0.9971859296482412,0,1.6465701718759718e-10,True,True
+nwm9,8.8989,8.911424973073402,8.874605700490353,8.981609761614635,8,8,True,4975,0.9825125628140704,0,2.3187657523238148e-10,True,True
+nwm11,10.7446,10.760529756116501,10.714672187000287,10.833590158010107,8,8,True,4975,0.9955778894472361,0,2.232810958693876e-10,True,True

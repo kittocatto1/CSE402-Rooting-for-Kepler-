@@ -1,0 +1,10 @@
+{
+  "config_fingerprint": "b04997c3",
+  "config_name": "verification",
+  "experiment": "verification",
+  "git_commit": "48dcad1feea73a1d50268e31bf7d40b26ca3a2bc",
+  "git_dirty": false,
+  "n_rows": 4,
+  "table": "summary.csv",
+  "written_at": "2026-09-24T20:27:58+00:00"
+}
