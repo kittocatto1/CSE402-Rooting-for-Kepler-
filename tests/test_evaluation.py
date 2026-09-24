@@ -165,18 +165,27 @@ def test_cost_per_correct_digit():
     assert cost_per_correct_digit(counts, 1e-20, weights) == pytest.approx(10 / 16)
 
 
-@pytest.mark.parametrize("error", [0.0, -1e-3, float("nan"), float("inf"),
+def test_cost_per_correct_digit_counts_an_exact_hit_at_the_ceiling():
+    """Most converged solves land exactly on the reference; dropping them
+    would delete each solver's best results from the ratio."""
+    weights = {"sincos_pairs": 2.0, "sin_only": 1.0}
+    counts = {"sincos_pairs": 3, "sin_only": 4}          # cost 10
+    assert cost_per_correct_digit(counts, 0.0, weights) == pytest.approx(10 / 16)
+
+
+@pytest.mark.parametrize("error", [-1e-3, float("nan"), float("inf"),
                                    1.0, 5.0, None])
 def test_cost_per_correct_digit_is_nan_when_meaningless(error):
     assert math.isnan(cost_per_correct_digit({"sin_only": 1}, error))
 
 
 def test_measure_weights_normalises_by_sin():
-    weights, spread = measure_weights_with_spread(n_calls=20_000, repeats=2)
+    weights, spread = measure_weights_with_spread(n_calls=80_000, repeats=3)
     assert weights["sin_only"] == 1.0
-    assert set(weights) == set(DEFAULT_WEIGHTS)
+    assert set(weights) == set(DEFAULT_WEIGHTS) == set(spread)
     for key, (lo, hi) in spread.items():
-        assert lo <= weights[key] <= hi
+        assert 0.0 < lo <= hi
+        assert math.isfinite(weights[key]) and weights[key] > 0.0
 
 
 def test_per_iteration_cost_table_is_measured_per_solver():

@@ -184,7 +184,7 @@ def plot_cost_vs_accuracy(df: pd.DataFrame,
         {c[len("cost_"):]: r[c] for c in df.columns if c.startswith("cost_")},
         r["error"]), axis=1)
     df["cost_per_digit"] = per_digit
-    exact_hits = (df["error"] == 0.0).groupby(df["solver"]).sum()
+    exact_share = (df["error"] == 0.0).groupby(df["solver"]).mean()
     table = cost_table_df.set_index("method")
     skipped = []
     for solver in _solver_order(df["solver"]):
@@ -197,7 +197,7 @@ def plot_cost_vs_accuracy(df: pd.DataFrame,
         index = efficiency_index(float(order), float(calls))
         cpd = df.loc[df["solver"] == solver, "cost_per_digit"].median()
         ax2.scatter(index, cpd, s=50, color=SOLVER_COLORS.get(solver, "k"), zorder=3)
-        ax2.annotate(f"{solver} ({int(exact_hits.get(solver, 0))} exact)",
+        ax2.annotate(f"{solver} ({100 * exact_share.get(solver, 0.0):.0f}% exact)",
                      (index, cpd), textcoords="offset points", xytext=(5, 4), fontsize=8)
     ax2.set_xlabel("efficiency index  order^(1/calls per iter)")
     ax2.set_ylabel("median cost per correct digit")
