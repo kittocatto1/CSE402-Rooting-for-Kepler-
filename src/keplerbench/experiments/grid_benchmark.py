@@ -30,7 +30,8 @@ from keplerbench.evaluation import robustness
 from keplerbench.experiments.grid import build_grid
 from keplerbench.experiments.runner import GUESS_INDEPENDENT, run_sweep, time_solve
 from keplerbench.io.config import load_config
-from keplerbench.io.results_io import results_path, save_history, save_results
+from keplerbench.io.results_io import (meta_path, results_path, save_history,
+                                        save_results)
 
 EXPERIMENT = "grid_benchmark"
 
@@ -95,6 +96,9 @@ def _preflight(use_reference: bool) -> None:
     # away from erasing a real results directory.
     probe_file = results_path(PREFLIGHT_EXPERIMENT, "probe.csv")
     probe_file.unlink(missing_ok=True)
+    # save_results writes a provenance sidecar beside every table; leaving it
+    # would keep the directory non-empty and defeat the rmdir below.
+    meta_path(probe_file).unlink(missing_ok=True)
     try:
         probe_file.parent.rmdir()
     except OSError:
