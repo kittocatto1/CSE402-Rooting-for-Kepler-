@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 #: Pretty labels for the report/slides.
-_PARAM_LABELS = {"e": "$e$", "omega": r"$\omega$", "K": "$K$",
+_PARAM_LABELS = {"P": "$P$", "e": "$e$", "omega": r"$\omega$", "K": "$K$",
                 "gamma": r"$\gamma$", "jitter": "jitter"}
 
 

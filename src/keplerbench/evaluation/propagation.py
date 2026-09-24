@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 #: Fitted parameters this study tracks shifts for, in report order.
-TRACKED_PARAMS = ["e", "omega", "K", "gamma", "jitter"]
+TRACKED_PARAMS = ["P", "e", "omega", "K", "gamma", "jitter"]
 
 
 def _require(df: pd.DataFrame, columns: list[str], who: str) -> None:
@@ -41,7 +41,10 @@ def parameter_shift(fits: pd.DataFrame, reference_tol: float) -> pd.DataFrame:
 
     rows = []
     for solver, group in fits.groupby("solver", sort=False):
-        reference_rows = group.loc[np.isclose(group["tolerance"], reference_tol)]
+        # atol=0: np.isclose's default atol=1e-8 would treat every tolerance
+        # <= ~1e-8 as "equal" to 1e-14 and silently pick the wrong baseline.
+        reference_rows = group.loc[np.isclose(group["tolerance"], reference_tol,
+                                              rtol=1e-9, atol=0.0)]
         if reference_rows.empty:
             raise ValueError(
                 f"parameter_shift: no row for solver {solver!r} at "
@@ -109,3 +112,23 @@ def compare_error_budgets(solver_shifts: pd.DataFrame, noise_spread: dict,
             "ratio_solver_to_noise": (solver_shift / noise) if noise else float("nan"),
         })
     return pd.DataFrame(rows)
+
+
+def fit_timing(fits: pd.DataFrame) -> pd.DataFrame:
+    """Wall-clock per full RadVel fit, one row per solver (Section 4.3).
+
+    Medians over the tolerance sweep, since each (solver, tolerance) fit is
+    timed once. ``slowdown_vs_native`` compares against the identical fit
+    run with RadVel's compiled solver; ``us_per_solve`` divides by the number
+    of Kepler solves, so it is comparable across fits of different length.
+    Timings are of this project's pure-Python harness, not of a compiled
+    implementation of each method.
+    """
+    _require(fits, ["solver", "fit_seconds", "native_fit_seconds", "n_solves"], "fit_timing")
+    per_fit = fits.assign(
+        us_per_solve=1e6 * fits["fit_seconds"] / fits["n_solves"],
+        slowdown_vs_native=fits["fit_seconds"] / fits["native_fit_seconds"],
+    )
+    cols = ["fit_seconds", "native_fit_seconds", "slowdown_vs_native", "us_per_solve", "n_solves"]
+    table = per_fit.groupby("solver", sort=False)[cols].median().reset_index()
+    return table.rename(columns={c: f"median_{c}" for c in cols})
