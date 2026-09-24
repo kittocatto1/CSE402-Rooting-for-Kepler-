@@ -16,7 +16,14 @@ from keplerbench.evaluation.convergence_order import (
     last_finite,
     order_from_history_detail,
 )
-from keplerbench.evaluation.cost_model import weighted_cost
+from keplerbench.evaluation.cost_model import (
+    COST_TABLE_COLUMNS,
+    DEFAULT_WEIGHTS,
+    cost_per_correct_digit,
+    measure_weights_with_spread,
+    per_iteration_cost_table,
+    weighted_cost,
+)
 from keplerbench.evaluation.metrics import efficiency_index
 
 
@@ -129,3 +136,61 @@ def test_weighted_cost_ignores_diagnostic_counters():
         weights = {"sincos_pairs": 1.5, "sin_only": 1.0, "cos_only": 1.0,
                    "synthesised_derivatives": 0.1}
         assert weighted_cost(counts, weights) == pytest.approx(4.0)
+
+
+def test_weighted_cost_defaults_to_measured_weights():
+    counts = {"sincos_pairs": 1, "sin_only": 2}
+    expected = DEFAULT_WEIGHTS["sincos_pairs"] + 2 * DEFAULT_WEIGHTS["sin_only"]
+    assert weighted_cost(counts) == pytest.approx(expected)
+
+
+def test_default_weights_are_measured_not_blank():
+    """aggregate.py blanks the whole cost column while any weight is NaN."""
+    assert DEFAULT_WEIGHTS["sin_only"] == 1.0
+    assert all(math.isfinite(w) and w > 0 for w in DEFAULT_WEIGHTS.values())
+
+
+def test_weighted_cost_zero_count_never_pays_an_unmeasured_weight():
+    weights = {"sincos_pairs": 1.0, "sin_only": 1.0,
+               "synthesised_derivatives": float("nan")}
+    assert weighted_cost({"sincos_pairs": 1, "synthesised_derivatives": 0},
+                         weights) == pytest.approx(1.0)
+
+
+def test_cost_per_correct_digit():
+    weights = {"sincos_pairs": 2.0, "sin_only": 1.0}
+    counts = {"sincos_pairs": 3, "sin_only": 4}          # cost 10
+    assert cost_per_correct_digit(counts, 1e-10, weights) == pytest.approx(1.0)
+    # capped at the double-precision ceiling, like correct_digits
+    assert cost_per_correct_digit(counts, 1e-20, weights) == pytest.approx(10 / 16)
+
+
+@pytest.mark.parametrize("error", [0.0, -1e-3, float("nan"), float("inf"),
+                                   1.0, 5.0, None])
+def test_cost_per_correct_digit_is_nan_when_meaningless(error):
+    assert math.isnan(cost_per_correct_digit({"sin_only": 1}, error))
+
+
+def test_measure_weights_normalises_by_sin():
+    weights, spread = measure_weights_with_spread(n_calls=20_000, repeats=2)
+    assert weights["sin_only"] == 1.0
+    assert set(weights) == set(DEFAULT_WEIGHTS)
+    for key, (lo, hi) in spread.items():
+        assert lo <= weights[key] <= hi
+
+
+def test_per_iteration_cost_table_is_measured_per_solver():
+    from keplerbench.core.registry import list_solvers
+
+    rows = {r["method"]: r for r in per_iteration_cost_table()}
+    assert set(rows) == set(list_solvers())
+    for row in rows.values():
+        assert tuple(row) == COST_TABLE_COLUMNS
+    # Newton and Danby touch one new point per iteration with one sincos
+    # pair - Danby's f'' and f''' are free - which is the Section 4.1 point.
+    for name in ("newton", "danby"):
+        assert rows[name]["sincos pairs"] == 1
+        assert rows[name]["eval points"] == 1
+    # the with-memory methods recycle values into synthesised derivatives
+    assert rows["nwm9"]["synthesised derivatives"] > 0
+    assert rows["markley"]["theoretical order"] is None

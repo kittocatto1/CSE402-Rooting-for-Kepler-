@@ -164,7 +164,9 @@ def _cost_vs_accuracy() -> plt.Figure:
 
 
 def _wallclock_vs_cost() -> plt.Figure:
-    return cost_plots.plot_wallclock_vs_cost(load_results(GRID, "timing.csv"))
+    # timing.csv carries no counters; raw.csv supplies each point's cost.
+    return cost_plots.plot_wallclock_vs_cost(load_results(GRID, "timing.csv"),
+                                             load_results(GRID, "raw.csv"))
 
 
 def _tolerance_vs_shift() -> plt.Figure:
@@ -212,7 +214,7 @@ FIGURES = [
     Figure("cost_vs_accuracy", "cost", _cost_vs_accuracy,
            [(GRID, "raw.csv")]),
     Figure("wallclock_vs_cost", "cost", _wallclock_vs_cost,
-           [(GRID, "timing.csv")]),
+           [(GRID, "timing.csv"), (GRID, "raw.csv")]),
     Figure("tolerance_vs_parameter_shift", "propagation", _tolerance_vs_shift,
            [(PROPAGATION, "summary.csv")]),
     Figure("error_budget", "propagation", _error_budget,
