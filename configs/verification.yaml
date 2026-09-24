@@ -22,3 +22,7 @@ extra:
   working_precision_dps: 2000
   # Small controlled Kepler set used by verify_kepler_correctness.
   kepler_check_points: 5000
+  # The correctness sweep needs a REAL stopping tolerance. It cannot use the
+  # tol above: that is 0.0 on purpose, to stop the order run exiting early,
+  # and a solver given tol=0 would just spin to max_iter everywhere.
+  kepler_check_tol: 1.0e-13

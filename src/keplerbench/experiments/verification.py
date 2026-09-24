@@ -10,15 +10,26 @@ Owner: Suchi.
 
 from __future__ import annotations
 
+import math
+import warnings
 from typing import Any, Callable, Sequence
 
 import mpmath as mp
+import pandas as pd
 
 from keplerbench.core.counters import CostCounter
-from keplerbench.core.registry import get_solver
+from keplerbench.core.registry import get_guess, get_solver
 from keplerbench.evaluation.convergence_order import order_from_history_detail
+from keplerbench.experiments.grid import (pathological_grid,
+                                          radvel_operating_grid, uniform_grid)
+from keplerbench.experiments.runner import solve_one
+from keplerbench.io.config import load_config
+from keplerbench.io.results_io import results_path
+from keplerbench.reference.mpmath_reference import reference_root
 
 __all__ = [
+    "BRANCH_TOL",
+    "kepler_check_points",
     "measure_order_on_kepler",
     "GenericProblem",
     "PAPER_TEST_FUNCTIONS",
@@ -352,29 +363,228 @@ def measure_order_on_kepler(
     return rows
 
 
+#: A converged iterate further than this from the reference root is on a
+#: DIFFERENT root, not a slightly inaccurate one.  Kepler's branches are
+#: separated by order 2*pi, and a correct solve lands within ~1e-13, so
+#: anything in between is unambiguous.  Deliberately far above numerical
+#: noise and far below the branch spacing.
+BRANCH_TOL = 1e-6
+
+
+def kepler_check_points(n_points: int = 5000, seed: int = 0
+                        ) -> list[tuple[float, float]]:
+    """(e, M) sample covering the full range, including the hard corner.
+
+    Reuses the grid module rather than rolling a fresh sampler, so the
+    correctness check visits the same kind of territory the benchmark does.
+    Roughly half ordinary operating range, a quarter pathological corner, a
+    quarter RadVel-realistic - the corner is over-weighted relative to its
+    area on purpose, because that is where a solver jumps branches.
+
+    ``n_points`` is a target; the blocks are sized to land near it.
+    """
+    quarter = max(1, n_points // 4)
+    side = max(2, int(round(math.sqrt(2 * quarter))))
+    corner = max(2, int(round(math.sqrt(quarter))))
+    return (uniform_grid(n_e=side, n_M=side, e_max=0.99)
+            + pathological_grid(n_e=corner, n_M=corner)
+            + radvel_operating_grid(n_samples=quarter, seed=seed))
+
+
 def verify_kepler_correctness(solver_name: str, n_points: int = 5000,
-                              tol: float = 1e-13) -> dict:
+                              tol: float = 1e-13, max_iter: int = 100,
+                              guess_name: str = "simple",
+                              seed: int = 0) -> dict:
     """Check the solver returns the RIGHT root on Kepler, not just a root.
 
-    TODO(Suchi): blocked on Anisa's reference.reference_root, which is still
-    a skeleton.  Once it lands:
-      1. Sample (e, M) over the full range.
-      2. Solve, and compare against reference.reference_root.
-      3. Report max |E - E_ref| and the fraction of points where the solver
-         converged to something that is not the reference root - the second
-         failure mode is easy to miss because the residual looks fine when
-         the iteration has jumped to a different branch.
+    Two failure modes, kept apart because they mean opposite things:
+
+    * **Non-convergence** is honest.  A solver that reports failure in the
+      pathological corner has told the truth about itself, and the
+      robustness metric is where that belongs - not here.  It does not fail
+      this check.
+    * **A wrong root** is not honest.  The iteration jumped to another
+      branch, the residual |f(E)| is tiny because that branch really is a
+      root, ``converged`` is True, and every downstream number computed from
+      E is silently wrong.  This is the failure this function exists to
+      catch, and the only one that fails it.
+
+    Compared against :func:`reference.reference_root`, which is an
+    independent bracketing solve at 50 digits - never one of the methods
+    under test.
+
+    Returns a dict with the counts, the worst offender, and ``passed``.
     """
-    raise NotImplementedError("verify_kepler_correctness: blocked on reference_root")
+    solver = get_solver(solver_name)
+    guess = get_guess(guess_name)
+    points = kepler_check_points(n_points, seed=seed)
+
+    n_converged = n_failed = n_wrong = 0
+    max_error = 0.0
+    worst: tuple[float, float] | None = None
+    worst_wrong: tuple[float, float] | None = None
+
+    for e, M in points:
+        reference = reference_root(e, M)
+        result = solve_one(solver, guess, e=e, M=M, tol=tol,
+                           max_iter=max_iter, E_reference=reference)
+
+        # ``converged`` is the only honest gate. Falling back to
+        # "no exception was raised" would count a run that simply exhausted
+        # max_iter as an answer: Newton at e=0.9999, M=0.1 walks off to
+        # E = 8.8e12 with a residual of the same size, and would then be
+        # reported as a WRONG ROOT rather than as the non-convergence it is.
+        # Markley needs no special case here - it is closed-form but still
+        # reports converged=True with iterations=0.
+        if not result.converged:
+            n_failed += 1
+            continue
+
+        n_converged += 1
+        error = abs(result.E - reference)
+        if error > BRANCH_TOL:
+            n_wrong += 1
+            if worst_wrong is None:
+                worst_wrong = (e, M)
+        elif error > max_error:
+            max_error, worst = error, (e, M)
+
+    total = len(points)
+    return {
+        "solver": solver_name,
+        "check": "kepler_correctness",
+        "n_points": total,
+        "n_converged": n_converged,
+        "n_failed": total - n_converged,
+        "n_wrong_root": n_wrong,
+        "fraction_wrong_root": n_wrong / total if total else float("nan"),
+        "fraction_converged": n_converged / total if total else float("nan"),
+        # Max error over the points that found the RIGHT root; mixing the
+        # wrong-root points in here would report ~2*pi and hide the real
+        # accuracy.
+        "max_abs_error": max_error,
+        "worst_point": worst,
+        "first_wrong_point": worst_wrong,
+        "passed": n_wrong == 0,
+    }
+
+
+EXPERIMENT = "verification"
+
+#: Column order for the two tables. Stated explicitly so that a run which
+#: skips every solver still writes a file with a header rather than a
+#: zero-byte one that pandas refuses to read back - the same guarantee
+#: io.results_io makes for the raw tables.
+ORDER_COLUMNS = ("solver", "function", "measured_order", "claimed_order",
+                 "abs_diff", "passed", "n_usable", "iterations", "reason")
+SUMMARY_COLUMNS = (
+    "solver", "claimed_order", "measured_order_mean", "measured_order_min",
+    "measured_order_max", "n_functions", "n_functions_passed",
+    "order_check_passed", "kepler_n_points", "kepler_fraction_converged",
+    "kepler_n_wrong_root", "kepler_max_abs_error", "kepler_check_passed",
+    "passed",
+)
+
+
+def _table(rows: list[dict], columns: tuple[str, ...]) -> pd.DataFrame:
+    """Rows to a DataFrame with a stable column order, header even if empty."""
+    if not rows:
+        return pd.DataFrame(columns=list(columns))
+    frame = pd.DataFrame(rows)
+    present = [c for c in columns if c in frame.columns]
+    extra = [c for c in frame.columns if c not in present]
+    return frame[present + extra]
 
 
 def run(config_path: str) -> None:
     """Entry point used by scripts/run_verification.py.
 
-    TODO(Suchi): blocked on Anisa's io.config.load_config and
-    io.results_io.save_results.  Once they land: load the config, run both
-    checks for every solver listed, write the table to
-    results/verification/summary.csv, and print a clear PASS/FAIL line per
-    solver. Do not write any numbers by hand.
+    Runs both checks for every solver in the config and writes
+
+      results/verification/order.csv     one row per (solver, test function)
+      results/verification/summary.csv   one row per solver, both checks
+
+    then prints a PASS/FAIL line each.  Every number in those files is
+    measured here; nothing is transcribed by hand.
+
+    A solver that is still a skeleton is warned about and skipped rather
+    than aborting the run, so this stays usable while the team works in
+    parallel.
     """
-    raise NotImplementedError("verification.run: blocked on io.config / io.results_io")
+    cfg = load_config(config_path)
+    dps = int(cfg.extra.get("working_precision_dps", VERIFICATION_DPS))
+    n_points = int(cfg.extra.get("kepler_check_points", 5000))
+    # cfg.tol is 0.0 for this experiment - that is what forces the order run
+    # to take exactly max_iter iterations. It is NOT a usable stopping
+    # tolerance for the correctness sweep, which needs a real one.
+    kepler_tol = float(cfg.extra.get("kepler_check_tol", 1e-13))
+    guess_name = cfg.guesses[0] if cfg.guesses else "simple"
+
+    print(f"verification: {len(cfg.solvers)} solvers, {dps} dps, "
+          f"{len(PAPER_TEST_FUNCTIONS)} test functions, "
+          f"~{n_points} Kepler points")
+
+    order_rows: list[dict] = []
+    summary_rows: list[dict] = []
+
+    for solver_name in cfg.solvers:
+        try:
+            rows = verify_order_on_test_functions(
+                solver_name, n_iterations=cfg.max_iter, dps=dps)
+            correctness = verify_kepler_correctness(
+                solver_name, n_points=n_points, tol=kepler_tol,
+                guess_name=guess_name, seed=cfg.seed)
+        except NotImplementedError as exc:
+            warnings.warn(f"skipping {solver_name}: {exc}", stacklevel=2)
+            continue
+
+        order_rows.extend(rows)
+        measured = [r["measured_order"] for r in rows
+                    if r["measured_order"] == r["measured_order"]]
+        order_passed = all(r["passed"] for r in rows)
+
+        summary_rows.append({
+            "solver": solver_name,
+            "claimed_order": rows[0]["claimed_order"] if rows else None,
+            "measured_order_mean": sum(measured) / len(measured) if measured else float("nan"),
+            "measured_order_min": min(measured) if measured else float("nan"),
+            "measured_order_max": max(measured) if measured else float("nan"),
+            "n_functions": len(rows),
+            "n_functions_passed": sum(1 for r in rows if r["passed"]),
+            "order_check_passed": order_passed,
+            "kepler_n_points": correctness["n_points"],
+            "kepler_fraction_converged": correctness["fraction_converged"],
+            "kepler_n_wrong_root": correctness["n_wrong_root"],
+            "kepler_max_abs_error": correctness["max_abs_error"],
+            "kepler_check_passed": correctness["passed"],
+            "passed": order_passed and correctness["passed"],
+        })
+
+    order_path = results_path(EXPERIMENT, "order.csv")
+    _table(order_rows, ORDER_COLUMNS).to_csv(order_path, index=False)
+    summary_path = results_path(EXPERIMENT, "summary.csv")
+    _table(summary_rows, SUMMARY_COLUMNS).to_csv(summary_path, index=False)
+
+    print()
+    for row in summary_rows:
+        verdict = "PASS" if row["passed"] else "FAIL"
+        claimed = row["claimed_order"]
+        claimed_text = "closed form" if claimed is None else f"{claimed:.4f}"
+        print(
+            f"  {verdict}  {row['solver']:<8s} "
+            f"order {row['measured_order_mean']:.4f} vs {claimed_text} "
+            f"({row['n_functions_passed']}/{row['n_functions']} functions)   "
+            f"kepler {row['kepler_n_wrong_root']} wrong root(s), "
+            f"max err {row['kepler_max_abs_error']:.2e}, "
+            f"{row['kepler_fraction_converged']:.1%} converged"
+        )
+
+    n_failed = sum(1 for row in summary_rows if not row["passed"])
+    print()
+    print(f"wrote {order_path}")
+    print(f"wrote {summary_path}")
+    if n_failed:
+        # Loud, because the project's rule is that a solver does not enter
+        # the grid benchmark until this passes.
+        print(f"\n{n_failed} solver(s) FAILED verification - do not run the "
+              "grid benchmark until this is resolved.")
