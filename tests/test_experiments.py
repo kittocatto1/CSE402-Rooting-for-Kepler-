@@ -139,13 +139,14 @@ def fake_io(monkeypatch, tmp_path):
         d.mkdir(parents=True, exist_ok=True)
         return d / filename
 
-    def save_results(results, experiment, filename="raw.csv"):
+    def save_results(results, experiment, filename="raw.csv", *, config=None):
         io.results[filename] = list(results)
         path = results_path(experiment, filename)
         path.write_text("")
         return path
 
-    def save_history(results, experiment, filename="history.csv"):
+    def save_history(results, experiment, filename="history.csv", *,
+                     config=None):
         io.history[filename] = list(results)
         return results_path(experiment, filename)
 
@@ -296,3 +297,31 @@ def test_grid_benchmark_reports_a_stubbed_dependency_as_a_status(monkeypatch):
         gb.run("configs/grid_benchmark.yaml")
     assert "still stubs" in str(excinfo.value)
     assert "load_config" in str(excinfo.value)
+
+
+def test_grid_benchmark_stamps_its_config_into_the_saved_tables(monkeypatch,
+                                                               fake_io):
+    """Without the config, meta.json has no fingerprint and a result table
+    cannot be traced back to the settings that produced it."""
+    from keplerbench.experiments import grid_benchmark as gb
+
+    cfg = _config(extra={"history_subgrid": {"e": [0.3], "M": [1.0]}})
+    seen = {}
+    real_save, real_hist = gb.save_results, gb.save_history
+
+    def save_results(results, experiment, filename="raw.csv", *, config=None):
+        seen[filename] = config
+        return real_save(results, experiment, filename)
+
+    def save_history(results, experiment, filename="history.csv", *,
+                     config=None):
+        seen[filename] = config
+        return real_hist(results, experiment, filename)
+
+    monkeypatch.setattr(gb, "save_results", save_results)
+    monkeypatch.setattr(gb, "save_history", save_history)
+    _use_config(monkeypatch, cfg)
+    gb.run("ignored.yaml")
+
+    assert seen["raw.csv"] is cfg
+    assert seen["history.csv"] is cfg
