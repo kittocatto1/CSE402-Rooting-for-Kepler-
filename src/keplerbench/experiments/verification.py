@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from pathlib import Path
 from typing import Any, Callable, Sequence
 
 import mpmath as mp
@@ -24,7 +25,9 @@ from keplerbench.experiments.grid import (pathological_grid,
                                           radvel_operating_grid, uniform_grid)
 from keplerbench.experiments.runner import solve_one
 from keplerbench.io.config import load_config
-from keplerbench.io.results_io import results_path
+# _write_meta is private; see the note in _save_table for why it is used here
+# and why it should be promoted to the public API.
+from keplerbench.io.results_io import _write_meta, results_path
 from keplerbench.reference.mpmath_reference import reference_root
 
 __all__ = [
@@ -496,6 +499,30 @@ def _table(rows: list[dict], columns: tuple[str, ...]) -> pd.DataFrame:
     return frame[present + extra]
 
 
+def _save_table(rows: list[dict], columns: tuple[str, ...], filename: str,
+                config) -> Path:
+    """Write one table plus the provenance sidecar that belongs to it.
+
+    The house rule in ``io/results_io.py`` is that every table in the report
+    can be traced back to the settings and the commit that produced it.
+    ``save_results`` does that automatically, but only for tables made of
+    :class:`SolveResult` objects - these two are per-solver summaries, so the
+    sidecar has to be written explicitly.
+
+    NOTE(Suchi -> Anisa): this is the one place in the project that reaches
+    for ``results_io._write_meta`` by its private name. Duplicating the
+    schema here instead would be worse - two sidecar formats in one
+    ``results/`` tree - but it would be better still if the helper were
+    public, since ``experiments/error_propagation.py`` writes summary tables
+    the same way and has the same gap. Worth promoting to the public API.
+    """
+    table = _table(rows, columns)
+    path = results_path(EXPERIMENT, filename)
+    table.to_csv(path, index=False)
+    _write_meta(path, EXPERIMENT, len(table), config)
+    return path
+
+
 def run(config_path: str) -> None:
     """Entry point used by scripts/run_verification.py.
 
@@ -560,10 +587,8 @@ def run(config_path: str) -> None:
             "passed": order_passed and correctness["passed"],
         })
 
-    order_path = results_path(EXPERIMENT, "order.csv")
-    _table(order_rows, ORDER_COLUMNS).to_csv(order_path, index=False)
-    summary_path = results_path(EXPERIMENT, "summary.csv")
-    _table(summary_rows, SUMMARY_COLUMNS).to_csv(summary_path, index=False)
+    order_path = _save_table(order_rows, ORDER_COLUMNS, "order.csv", cfg)
+    summary_path = _save_table(summary_rows, SUMMARY_COLUMNS, "summary.csv", cfg)
 
     print()
     for row in summary_rows:

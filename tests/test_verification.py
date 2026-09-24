@@ -8,6 +8,7 @@ wrong answer, and that it does not mistake a wrong answer for divergence.
 
 from __future__ import annotations
 
+import json
 import math
 
 import pandas as pd
@@ -178,6 +179,53 @@ def test_run_writes_both_tables_and_reports_pass(tmp_path, monkeypatch, capsys):
     order = pd.read_csv(written["order.csv"])
     assert len(order) == 8, "one row per paper test function"
     assert set(order["solver"]) == {"newton"}
+
+
+def test_run_writes_a_provenance_sidecar_for_every_table(tmp_path, monkeypatch):
+    """Every table in the report must name the settings that produced it.
+
+    Without this, the verification numbers are untraceable: you cannot tell
+    which config, which commit, or whether the tree was dirty when they were
+    measured - and a stale summary.csv looks exactly like a fresh one.
+    """
+    config = tmp_path / "verification.yaml"
+    config.write_text(
+        "name: verification\n"
+        "solvers: [newton]\n"
+        "guesses: [simple]\n"
+        "tol: 0.0\n"
+        "max_iter: 6\n"
+        "use_reference: true\n"
+        "extra:\n"
+        "  working_precision_dps: 200\n"
+        "  kepler_check_points: 20\n"
+    )
+
+    def fake_results_path(experiment, filename):
+        path = tmp_path / experiment / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    monkeypatch.setattr(verification, "results_path", fake_results_path)
+    verification.run(str(config))
+
+    from keplerbench.io.config import config_fingerprint, load_config
+    from keplerbench.io.results_io import meta_path
+
+    expected = config_fingerprint(load_config(str(config)))
+    for filename in ("order.csv", "summary.csv"):
+        table = tmp_path / "verification" / filename
+        sidecar = meta_path(table)
+        assert sidecar.exists(), f"no sidecar beside {filename}"
+        meta = json.loads(sidecar.read_text())
+        assert meta["experiment"] == "verification"
+        assert meta["table"] == filename
+        assert meta["config_name"] == "verification"
+        assert meta["config_fingerprint"] == expected
+        assert meta["n_rows"] == len(pd.read_csv(table))
+        assert meta["written_at"]
+        # git fields are best-effort - present, but may be null off a checkout.
+        assert "git_commit" in meta and "git_dirty" in meta
 
 
 def test_run_skips_an_unimplemented_solver_instead_of_aborting(
