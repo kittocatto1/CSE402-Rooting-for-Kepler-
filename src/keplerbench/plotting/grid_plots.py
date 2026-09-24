@@ -111,10 +111,55 @@ def _select(df: pd.DataFrame, who: str, **equals: object) -> pd.DataFrame:
     return selection
 
 
-def _grid_axes(selection: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    """The sorted unique e and M values this selection was sampled on."""
-    return (np.sort(selection["e"].unique()),
-            np.sort(selection["M"].unique()))
+#: Largest number of cells per axis before the axes are binned rather than
+#: taken as the raw unique values.  Purely a display/memory choice: lower is
+#: coarser and cheaper, higher is finer.  200 keeps every panel under a
+#: megabyte.
+MAX_AXIS_CELLS = 200
+
+
+def _grid_axes(selection: pd.DataFrame,
+               max_cells: int = MAX_AXIS_CELLS) -> tuple[np.ndarray, np.ndarray]:
+    """The axes this selection is drawn on.
+
+    The raw unique values when the sampling really is a lattice, and a fixed
+    number of bins when it is not.
+
+    That distinction matters more than it looks.  A ``type: combined`` grid
+    is a union of a uniform block, a logarithmic corner block and a *random*
+    RadVel sample, so its unique values run into the thousands while the
+    points themselves number a few thousand.  Reindexing onto the full outer
+    product of unique e and unique M then produces a 2070 x 2120 array from
+    7400 points - 4.4 million cells at 0.17% occupancy.  That is 35 MB per
+    panel before matplotlib renders it, and across every solver-guess panel
+    it was enough to get the whole figure run killed by the OOM reaper.  It
+    also draws badly: isolated single-pixel dots rather than a map.
+
+    Binning fixes both.  Quantile edges rather than linear ones, so the
+    log-spaced corner block keeps its resolution instead of collapsing into
+    one bin.  Points that land in the same cell are averaged by
+    :func:`_pivot`, and genuinely unsampled cells still come back NaN.
+    """
+    axes = []
+    for column in ("e", "M"):
+        unique = np.sort(selection[column].unique())
+        if unique.size <= max_cells:
+            axes.append(unique)
+        else:
+            edges = np.unique(
+                np.quantile(unique, np.linspace(0.0, 1.0, max_cells + 1)))
+            axes.append((edges[:-1] + edges[1:]) / 2.0)
+    return axes[0], axes[1]
+
+
+def _nearest_index(values: np.ndarray, axis: np.ndarray) -> np.ndarray:
+    """Index of the closest cell on ``axis`` for each value."""
+    if axis.size == 1:
+        return np.zeros(values.size, dtype=int)
+    right = np.clip(np.searchsorted(axis, values), 1, axis.size - 1)
+    left = right - 1
+    closer_to_left = np.abs(values - axis[left]) <= np.abs(values - axis[right])
+    return np.where(closer_to_left, left, right)
 
 
 def _pivot(selection: pd.DataFrame, values: str,
@@ -125,10 +170,29 @@ def _pivot(selection: pd.DataFrame, values: str,
     random RadVel sample, so the (e, M) points are emphatically *not* a full
     rectangular lattice.  Reindexing onto one leaves genuine holes, and those
     holes must stay NaN rather than being filled with a neighbour.
+
+    Each point is assigned to the nearest cell of the supplied axes rather
+    than matched to an exact label.  When the axes are the raw unique values
+    - the lattice case - nearest-cell assignment is the identity, so nothing
+    changes.  When :func:`_grid_axes` has binned them, exact matching would
+    find no label at all and return an entirely empty panel; this does the
+    right thing in both cases.  Several points falling in one cell are
+    averaged, which is what binning means.
     """
-    table = selection.pivot_table(index="e", columns="M", values=values,
-                                  aggfunc="mean")
-    return table.reindex(index=e_values, columns=M_values).to_numpy(dtype=float)
+    if selection.empty:
+        return np.full((e_values.size, M_values.size), np.nan)
+
+    rows = _nearest_index(selection["e"].to_numpy(dtype=float), e_values)
+    columns = _nearest_index(selection["M"].to_numpy(dtype=float), M_values)
+
+    totals = np.zeros((e_values.size, M_values.size), dtype=float)
+    counts = np.zeros((e_values.size, M_values.size), dtype=np.int64)
+    np.add.at(totals, (rows, columns), selection[values].to_numpy(dtype=float))
+    np.add.at(counts, (rows, columns), 1)
+
+    with np.errstate(invalid="ignore"):
+        grid = np.where(counts > 0, totals / counts, np.nan)
+    return grid
 
 
 def _mesh_edges(centres: np.ndarray) -> np.ndarray:

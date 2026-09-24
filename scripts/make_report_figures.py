@@ -118,12 +118,19 @@ def _residual_histories() -> plt.Figure:
 
 
 def _measured_vs_claimed_order() -> plt.Figure:
-    order = load_results(VERIFICATION, "summary.csv")
+    # order.csv, not summary.csv: the plot needs one row per (solver, test
+    # function) so it can show the spread across functions as an error bar.
+    # summary.csv is already aggregated to measured_order_mean/min/max and
+    # has no measured_order column at all.
+    order = load_results(VERIFICATION, "order.csv")
     return convergence_plots.plot_measured_vs_claimed_order(order).figure
 
 
 def _order_vs_eccentricity() -> plt.Figure:
-    order = load_results(VERIFICATION, "summary.csv")
+    # kepler_order.csv: order measured on Kepler's equation across the
+    # eccentricity range, which is a different measurement from the paper
+    # test functions in order.csv and the only one carrying an `e` column.
+    order = load_results(VERIFICATION, "kepler_order.csv")
     return convergence_plots.plot_order_vs_eccentricity(order, log_1me=True).figure
 
 
@@ -201,9 +208,9 @@ FIGURES = [
     Figure("residual_histories", "convergence", _residual_histories,
            [(GRID, "history.csv")]),
     Figure("measured_vs_claimed_order", "convergence", _measured_vs_claimed_order,
-           [(VERIFICATION, "summary.csv")]),
+           [(VERIFICATION, "order.csv")]),
     Figure("order_vs_eccentricity", "convergence", _order_vs_eccentricity,
-           [(VERIFICATION, "summary.csv")]),
+           [(VERIFICATION, "kepler_order.csv")]),
     Figure("iterations_heatmaps", "grid", _iterations_heatmaps,
            [(GRID, "raw.csv")]),
     Figure("failure_maps", "grid", _failure_maps,
@@ -262,7 +269,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true",
                         help="show the plan and what each figure needs")
+    parser.add_argument("--only", action="append", default=[], metavar="NAME",
+                        help="build only this figure (repeatable)")
+    parser.add_argument("--skip", action="append", default=[], metavar="NAME",
+                        help="skip this figure (repeatable)")
     args = parser.parse_args()
+
+    known = {figure.name for figure in FIGURES}
+    unknown = sorted((set(args.only) | set(args.skip)) - known)
+    if unknown:
+        parser.error(f"unknown figure(s): {', '.join(unknown)}. "
+                     f"Known: {', '.join(sorted(known))}")
 
     if args.list:
         for figure in FIGURES:
@@ -270,9 +287,20 @@ def main() -> int:
             print(f"{figure.section}/{figure.name}  <- {needs}")
         return 0
 
+    # A figure that dies HARD - the OOM reaper, a segfault in a C extension -
+    # takes this whole process with it, and _build's except clause cannot
+    # catch that. Eleven good figures are then lost to one bad one, with no
+    # output explaining why. --skip is the escape hatch for exactly that.
+    selected = [f for f in FIGURES
+                if (not args.only or f.name in args.only)
+                and f.name not in args.skip]
+    # Only report what was skipped EXPLICITLY. Under --only the other eleven
+    # are implied, and listing them buries the one line that matters.
+    skipped = [f for f in FIGURES if f.name in args.skip]
+
     use_report_style()
     outcomes = []
-    for figure in FIGURES:
+    for figure in selected:
         status, detail = _build(figure)
         outcomes.append((figure, status, detail))
         if status == "ok":
@@ -283,17 +311,21 @@ def main() -> int:
                 print(f"    removed stale {path.relative_to(REPO_ROOT)}")
 
     built = [f for f, s, _ in outcomes if s == "ok"]
-    print(f"\n{len(built)}/{len(FIGURES)} figures rebuilt into "
+    print(f"\n{len(built)}/{len(selected)} selected figures rebuilt into "
           f"{FIGURE_DIR.relative_to(REPO_ROOT)}/")
-    if len(built) == len(FIGURES):
+    for figure in skipped:
+        print(f"  skipped {figure.section}/{figure.name}")
+
+    if len(built) == len(selected) and not skipped:
         return 0
 
-    print("\nNot rebuilt:")
-    for figure, status, detail in outcomes:
-        if status != "ok":
-            print(f"  {figure.section}/{figure.name:32s} {status}: {detail}")
-    print("\nRun the missing experiments (scripts/run_*.py) and try again. "
-          "The report must not be built from a partial set.")
+    if len(built) != len(selected):
+        print("\nNot rebuilt:")
+        for figure, status, detail in outcomes:
+            if status != "ok":
+                print(f"  {figure.section}/{figure.name:32s} {status}: {detail}")
+        print("\nRun the missing experiments (scripts/run_*.py) and try again. "
+              "The report must not be built from a partial set.")
     return 1
 
 
