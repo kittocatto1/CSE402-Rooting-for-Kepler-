@@ -196,8 +196,7 @@ at high eccentricity.
   \item \key{The proposal's central cost premise does not hold in this
         implementation.} A combined \texttt{sincos} evaluation was assumed
         to cost about one transcendental call; measured, it costs
-        $2.35$ --- statistically indistinguishable from two separate
-        calls. The discount the argument rests on is absent in CPython.
+        $2.44$, within timing noise of two separate calls ($2.06$). The discount the argument rests on is absent in CPython.
   \item \key{Downstream, none of it matters.} Solver-induced shifts in the
         fitted orbital parameters are three orders of magnitude smaller
         than the spread caused by measurement noise in the data.
@@ -307,15 +306,16 @@ Guess layer & Napier's guess (2024) & n/a & Symbolic-regression start, run in fr
 \label{sec:verify}
 
 The project's rule was that no solver enters the grid benchmark until its
-measured convergence order matches its source paper's claim on that
-paper's own test functions. This is what separates ``the method
+measured convergence order matches its source paper's claim. This is what separates ``the method
 underperforms'' from ``we mistyped the method''.
 
 \subsection{Measured convergence order}
 
 Each solver was run on the eight nonlinear test functions of the NWM11
 paper, from the paper's own starting points, at 2000-digit working
-precision.
+precision. NWM9 comes from a different paper with its own examples, but
+it was gated on the same NWM11 set; checking it on its own paper's
+functions remains to be done (\texttt{experiments/verification.py}).
 
 \begin{center}
 \small
@@ -462,16 +462,24 @@ with $\sin$-only normalised to $1.0$:
 \textbf{Operation} & \textbf{Relative cost} & \textbf{Proposal assumed} \\
 \midrule
 $\sin$ only                      & 1.000 & 1 \\
-$\cos$ only                      & 0.989 & 1 \\
-$(\sin,\cos)$ pair               & \textbf{2.354} & $\approx 1$ \\
-Synthesised derivative (Hermite) & 1.691 & --- \\
+$\cos$ only                      & 1.06 & 1 \\
+$(\sin,\cos)$ pair               & \textbf{2.44} & $\approx 1$ \\
+Synthesised derivative (Hermite) & 1.35 & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
+These are the weights every weighted cost in this report is computed with
+(\texttt{DEFAULT\_WEIGHTS} in \texttt{evaluation/cost\_model.py}). For
+example, Newton's $3.44$ per iteration is one pair plus one $\sin$. They
+are machine-dependent and noisy: a repeat measurement with
+\texttt{measure\_weights\_with\_spread} spread the pair over roughly
+$1.1$--$2.7$ across seven runs.
+
 \begin{finding}{The sincos discount does not exist in this implementation}
-A combined $(\sin,\cos)$ evaluation costs $2.354$ against $1.989$ for two
-separate calls --- not a discount but a small penalty. In pure Python
+A combined $(\sin,\cos)$ evaluation costs $2.44$ against $2.06$ for two
+separate calls. Given the run-to-run spread, that difference is within
+noise: the pair costs about the same as two calls, not one. In pure Python
 there is no fused \texttt{sincos} instruction to exploit: each call
 crosses the interpreter boundary separately.
 
@@ -582,7 +590,7 @@ which extends past $M = \pi$ where the uniform block stops.}
 \emph{Left}: accuracy against weighted cost per solve. Every method reaches
 the same $\approx 15.8$ correct digits, so the axis that separates them is
 cost, not accuracy --- which is the empirical form of the argument in
-Section~7. \emph{Right}: the generic efficiency index
+Section~\ref{sec:downstream}. \emph{Right}: the generic efficiency index
 $\rho^{1/\gamma}$ against the Kepler costing. The two disagree in rank
 order: the generic index places NWM9 and NWM11 highest, while on median
 correct digits per call Newton leads. This is precisely the mismatch the
@@ -676,17 +684,36 @@ resolve. NWM11 tracks its claim across the full range while NWM9 collapses
 beyond $e \approx 0.99$.}
 
 \pipelinefigure{figures/convergence/measured_vs_claimed_order.pdf}{0.86}{%
-Measured convergence order against each source paper's claim on the
-paper's own test functions. Error bars show the spread across the eight
+Measured convergence order against each source paper's claim, on the
+NWM11 paper's eight test functions (used for every solver). Error bars show the spread across the eight
 functions.}
 
 % =========================================================================
 \section{Downstream: Does Any of It Matter?}
+\label{sec:downstream}
 
 Solver error was traced through $M \rightarrow E \rightarrow \nu
-\rightarrow v_r$ into refitted orbital parameters, using RadVel on the
-HD~164922 dataset (401 HIRES points across three instrument eras). Each
-fit performs roughly $1.35\times10^{5}$ Kepler solves.
+\rightarrow v_r$ into refitted orbital parameters, with each of our
+solvers patched into RadVel in place of its own compiled solver. A call
+counter asserts after every fit that the patch actually fired.
+
+\key{Design: injection-recovery on real cadence.} The observation times,
+the per-point uncertainties and the three-instrument structure are the
+real HD~164922 data (401 HIRES points). The velocities are
+\emph{not}: they are replaced by a known, moderately eccentric orbit
+($P = 20.885258$\,d, $e = 0.35$, $\omega = 1.0$\,rad, $K = 5$\,m\,s$^{-1}$)
+plus Gaussian noise at the real uncertainties. Fitting HD~164922's own
+velocities with a single-planet model would give a near-circular,
+optimiser-dependent eccentricity (it has four planets), and near $e=0$
+the Kepler solve barely matters, so the study would measure nothing. The
+injection also gives a known answer to recover. The fit varies $P$, the
+time of conjunction, $\sqrt{e}\cos\omega$, $\sqrt{e}\sin\omega$ and
+$\log K$ (RadVel's recommended basis), plus one jitter term per
+instrument. Before the final fit, a 30-point multi-start over $(e,\omega)$
+using RadVel's native solver picks the starting point. The fit recovers
+$e = 0.342$, $\omega = 0.997$ and $K = 5.03$, all within $0.5\sigma$ of the
+injected values, identically for all five solvers. Each fit performs about
+$1.3\times10^{5}$ Kepler solves.
 
 \subsection{Cost of a full fit}
 
@@ -696,14 +723,20 @@ fit performs roughly $1.35\times10^{5}$ Kepler solves.
 \toprule
 \textbf{Solver} & \textbf{Median fit (s)} & \textbf{Slowdown vs.\ native} & \textbf{µs per solve} \\
 \midrule
-Newton  & 1.32 & 16.7$\times$ &  9.89 \\
-Danby   & 1.43 & 18.0$\times$ & 10.73 \\
-Markley & 1.54 & 19.4$\times$ & 11.96 \\
-NWM11   & 2.06 & 25.7$\times$ & 15.12 \\
-NWM9    & 2.33 & 29.1$\times$ & 16.81 \\
+Newton  & 1.32 & 16.2$\times$ &  9.84 \\
+Danby   & 1.38 & 17.0$\times$ & 10.41 \\
+Markley & 1.43 & 17.6$\times$ & 11.18 \\
+NWM11   & 1.87 & 22.6$\times$ & 14.43 \\
+NWM9    & 2.25 & 27.9$\times$ & 16.86 \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+Medians over the six tolerances (\texttt{results/error\_propagation/timing.csv}).
+Only the fit made with the solver under test is timed, not the multi-start
+search. ``Native'' is the identical fit, from the same starting point,
+using RadVel's compiled solver (about $0.08$\,s). Each fit was timed once,
+so differences below about $0.2$\,s are noise.
 
 The slowdown against RadVel's native solver is dominated by the
 scalar-Python bridge --- our solvers are scalar and RadVel passes arrays
@@ -731,28 +764,41 @@ how it compares to the two uncertainties that are already present.
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
 \textbf{Parameter} & \textbf{Solver shift} & \textbf{Noise spread} & \textbf{MCMC posterior} & \textbf{Noise / solver} \\
- & \footnotesize(tol $=10^{-4}$) & \footnotesize(Monte Carlo) & \footnotesize($1\sigma$) & \\
+ & \footnotesize(worst case) & \footnotesize(Monte Carlo) & \footnotesize($1\sigma$) & \\
 \midrule
-$P$      & $4.9\times10^{-9}$ & ---                 & $6.4\times10^{-4}$ & --- \\
-$e$      & $1.1\times10^{-5}$ & $1.58\times10^{-2}$ & $1.73\times10^{-2}$ & $1.4\times10^{3}$ \\
-$\omega$ & $2.3\times10^{-5}$ & $5.34\times10^{-2}$ & $5.39\times10^{-2}$ & $2.4\times10^{3}$ \\
-$K$      & $3.6\times10^{-5}$ & $1.06\times10^{-1}$ & $1.01\times10^{-1}$ & $3.0\times10^{3}$ \\
+$P$ (d)  & $1.2\times10^{-8}$ & $5.04\times10^{-4}$ & $6.36\times10^{-4}$ & $4.3\times10^{4}$ \\
+$e$      & $1.1\times10^{-5}$ & $1.65\times10^{-2}$ & $1.75\times10^{-2}$ & $1.5\times10^{3}$ \\
+$\omega$ (rad) & $2.2\times10^{-5}$ & $5.03\times10^{-2}$ & $5.52\times10^{-2}$ & $2.2\times10^{3}$ \\
+$K$ (m\,s$^{-1}$) & $3.5\times10^{-5}$ & $9.93\times10^{-2}$ & $1.03\times10^{-1}$ & $2.8\times10^{3}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+The solver shift is the largest absolute shift over all five solvers and
+all tolerances, measured from each solver's own $10^{-14}$ fit. In every
+parameter that worst case is Newton at $10^{-4}$. The noise spread is the
+standard deviation over 50 refits of fresh noise realisations. The MCMC
+width comes from one RadVel run with the native solver (2000 steps).
 
 \begin{finding}{Solver choice is not a source of error in practice}
 Even at the loosest tolerance tested ($10^{-4}$, far looser than any
 sensible production setting), the shift a solver induces in the fitted
 parameters is \textbf{three orders of magnitude smaller} than the scatter
-caused by measurement noise in the data --- and the noise-driven spread
+caused by measurement noise in the data. The noise-driven spread
 independently reproduces RadVel's own MCMC posterior width to within
-$10\%$, which is a useful consistency check on the Monte Carlo study
-itself.
+$10\%$ for $e$, $\omega$ and $K$ ($26\%$ for $P$), which is a useful
+consistency check on the Monte Carlo study itself.
 
-At the tolerances anyone would actually use ($10^{-12}$ and below) the
-shift is at or below the $10^{-9}$ level, and at $10^{-14}$ it is
-identically zero.
+Newton at $10^{-4}$ is the only setting with a genuine solver effect
+($6\times10^{-4}\sigma$ in $e$). As a second-order method it stops with an
+error in $E$ of about $10^{-4}$. Danby, NWM9 and NWM11 are already at full
+double precision by the time they pass even a $10^{-4}$ residual check,
+and Markley ignores the tolerance entirely, so its six fits are
+bit-identical. At every other setting the shift is at most $2\times10^{-5}\sigma$ and does
+not shrink as the tolerance tightens. That residue is the resolution floor
+of RadVel's Powell optimiser (\texttt{xtol}$\,=10^{-8}$), not solver error,
+so the study bounds the solver effect there rather than measuring it. The
+shift at $10^{-14}$ is zero by construction, since that is the reference.
 
 \medskip
 The practical consequence: \emph{choose the Kepler solver for speed and
@@ -771,15 +817,56 @@ not.}
 \pipelinefigure{figures/propagation/tolerance_vs_parameter_shift.pdf}{1.0}{%
 Shift in each fitted parameter as the solver tolerance is loosened, in units
 of the MCMC posterior $\sigma$. The dotted guides mark $1\sigma$ and
-$0.1\sigma$. Every curve stays four to eight orders of magnitude below
-$1\sigma$ across the whole sweep, and collapses to exactly zero at
-$10^{-14}$, the reference tolerance.}
+$0.1\sigma$. Every curve stays at least three orders of magnitude below
+$1\sigma$ across the whole sweep. Only Newton at $10^{-4}$ rises clearly
+above the $\sim10^{-5}\sigma$ optimiser floor. Hollow markers are shifts of
+exactly zero: Markley at every tolerance, and every solver at $10^{-14}$,
+the reference.}
 
 \pipelinefigure{figures/propagation/error_budget.pdf}{0.78}{%
 The three-way budget on a log scale: solver-induced shift against
 noise-driven spread against the MCMC posterior width. The second and third
 bars agree closely for every parameter, which is an independent check on the
 Monte Carlo study; the first is smaller by three orders of magnitude.}
+
+\subsection{Real-data checks}
+
+Because the main study uses injected velocities, all five solvers were
+also fitted to three datasets' \emph{real}, unmodified velocities. These
+checks test agreement between solvers, not recovery of a known orbit.
+For the two transiting planets the period and transit time come from
+photometry and are held fixed, as in RadVel's own example setups:
+\begin{itemize}
+  \item K2-24~b: $P = 20.885258$\,d, $t_c = 2072.79438$.
+  \item K2-131~b: $P = 0.3693038$\,d, $t_c = 2457582.9360$ [9].
+\end{itemize}
+HD~164922~b does not transit, so only its period ($1207$\,d) is fixed. Left
+free, sparse real data let the fit wander: $P$ jumped to an alias for
+K2-131 ($3.02$\,d), and $e$ ran off to $\approx 0.95$ for K2-24.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Points} & \textbf{Fitted $e$} & \textbf{Spread across 5 solvers} & \textbf{Better than circular?} \\
+\midrule
+K2-131 (1 planet)    & 70  & 0.135 & $2.8\times10^{-6}$ & no ($\Delta\ln\mathcal{L} \approx 0.00$) \\
+HD~164922 (4 planets) & 401 & 0.122 & $1.5\times10^{-8}$ & marginally ($0.08$) \\
+K2-24 (2 planets)    & 32  & 0.908 & $7.1\times10^{-9}$ & no ($-0.11$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All five solvers agree to within $3\times10^{-6}$ in $e$ on every real
+dataset. The fitted eccentricities themselves are not orbit measurements:
+\begin{itemize}
+  \item \textbf{K2-131:} $e \approx 0.13$ fits the data exactly as well as
+        the published, tidally circularised $e \approx 0$. The RV data
+        alone cannot separate them.
+  \item \textbf{HD~164922 and K2-24:} both are multi-planet systems fitted
+        with a single-planet model. For K2-24 the optimiser lands at a
+        high-$e$ solution slightly \emph{worse} than a circular orbit.
+\end{itemize}
 
 % =========================================================================
 \section{Synthesis}
@@ -837,10 +924,22 @@ only method in the study with a zero failure rate anywhere on the grid.
         iteration. It is uniform across methods and does not affect
         rankings, but the absolute per-iteration figures in
         Section~\ref{sec:cost} are one $\sin$ high.
-  \item \key{Single downstream dataset.} The error-propagation and Monte
-        Carlo studies use HD~164922 only. The three-orders-of-magnitude
-        margin is wide enough that the conclusion is unlikely to be
-        dataset-specific, but it has not been tested on another system.
+  \item \key{One injected orbit.} The error-propagation and Monte Carlo
+        studies use a single injected, moderately eccentric orbit
+        ($e = 0.35$) on HD~164922's real cadence and noise, not HD~164922's
+        own velocities. The three-orders-of-magnitude margin is wide enough
+        that the conclusion is unlikely to depend on this choice. However,
+        higher-eccentricity injections, where $\mathrm{d}\nu/\mathrm{d}E$
+        is largest, were not run. The real-data checks on three systems
+        test only whether the solvers agree with each other.
+  \item \key{Optimiser resolution floor.} Below tolerance $10^{-4}$ the
+        measured shifts ($\lesssim 2\times10^{-5}\sigma$) are set by the
+        stopping precision of RadVel's Powell fit. They are an upper bound
+        on the solver's effect, not a measurement of it.
+  \item \key{Small MCMC budget.} The posterior widths come from a single
+        2000-step MCMC run, which is not seeded, so they vary by a few per
+        cent between runs. They agree with the Monte Carlo spread,
+        but are not publication-grade on their own.
   \item \key{Estimator artefacts at extreme eccentricity.} Several entries
         in the order-versus-eccentricity table are measurement artefacts
         rather than method behaviour, as noted in
@@ -934,9 +1033,26 @@ either direction. That was the point.
 
   \item E. A. Petigura \textit{et al.},
   ``Two Transiting Low Density Sub-Saturns from K2,''
-  \textit{The Astronomical Journal}, vol. 153, no. 4, p. 142, 2017.
-  \textit{(HD~164922 and K2-24 system parameters; see
-  \texttt{data/README.md} for the full dataset provenance.)}
+  \textit{The Astrophysical Journal}, vol. 818, no. 1, p. 36, 2016.
+  doi: \href{https://doi.org/10.3847/0004-637X/818/1/36}
+  {10.3847/0004-637X/818/1/36}.
+  \textit{(K2-24 system; see \texttt{data/README.md} for the full dataset
+  provenance.)}
+
+  \item B. J. Fulton \textit{et al.},
+  ``Three Temperate Neptunes Orbiting Nearby Stars,''
+  \textit{The Astrophysical Journal}, vol. 830, no. 1, p. 46, 2016.
+  doi: \href{https://doi.org/10.3847/0004-637X/830/1/46}
+  {10.3847/0004-637X/830/1/46}.
+  \textit{(HD~164922 system.)}
+
+  \item F. Dai \textit{et al.},
+  ``The Discovery and Mass Measurement of a New Ultra-short-period Planet:
+  K2-131b,''
+  \textit{The Astronomical Journal}, vol. 154, no. 6, p. 226, 2017.
+  doi: \href{https://doi.org/10.3847/1538-3881/aa9065}
+  {10.3847/1538-3881/aa9065}.
+  \textit{(K2-131 ephemeris used in the real-data checks.)}
 
 \end{enumerate}
 \endgroup
