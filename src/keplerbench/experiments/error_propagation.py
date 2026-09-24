@@ -9,16 +9,28 @@ compared with RadVel's own MCMC posterior width?
 Why the dataset is a real-cadence, injected-orbit dataset and not a direct
 fit of K2-24's real velocities
 --------------------------------------------------------------------------
-A single-planet fit of the *real* K2-24 velocities was tried first (see the
-project's dev notes) and consistently drives eccentricity to exactly 0 for
-every one of the five solvers, on Powell and Nelder-Mead alike. That is a
-real result, not a bug: K2-24 is a two-planet system and this project's RV
-model (``rv/model.py``) is deliberately single-planet, so 32 points cannot
-separate a real, small eccentricity for planet b from the unmodeled second
-planet's signal. But e = 0 collapses Kepler's equation to the trivial
-identity nu = M - the Kepler solver stops mattering at all, which would make
-this entire study measure nothing (exactly the "near-circular orbit" trap
-the team workflow doc warns about).
+A single-planet fit of the *real* K2-24 velocities was tried first (see
+``run_real_data_check("k2-24")``) and lands at a low-to-moderate,
+optimiser/starting-point-sensitive eccentricity rather than one clean
+answer. Two real, separately-measured reasons contribute:
+
+  1. K2-24 is a two-planet system and this project's RV model
+     (``rv/model.py``) is deliberately single-planet, so 32 points cannot
+     cleanly separate a real eccentricity for planet b from the unmodeled
+     second planet's signal - several different (e, omega, K) combinations
+     explain away a similar amount of that contamination almost equally
+     well, so the fit has more than one comparably-good local optimum.
+  2. Under RadVel's own basis (see ``rv.radvel_bridge.build_posterior``),
+     the very small eccentricities this ambiguity favours sit right at a
+     coordinate flat-spot (de/d(secosw) -> 0 as e -> 0), which the
+     optimiser does not always resolve precisely even with a multi-start
+     search - a small, measured, and honestly-reported residual (see that
+     module's docstring for the exact numbers).
+
+Either way, a low/near-zero eccentricity outcome would collapse Kepler's
+equation to (or near) the trivial identity nu = M - the Kepler solver stops
+mattering, which would make this entire study measure nothing (exactly the
+"near-circular orbit" trap the team workflow doc warns about).
 
 The fix used here keeps everything else real - K2-24's genuine observation
 times and genuine per-point measurement uncertainties - and injects a
@@ -156,6 +168,70 @@ def run_tolerance_sweep(dataset: pd.DataFrame, initial_guess: OrbitParams,
     return pd.DataFrame(rows)
 
 
+#: Real-data validation cases, NOT the main study - direct fits of each
+#: dataset's REAL, unmodified velocities, no injection. Only k2-131 is
+#: literature-comparable: it is a genuine SINGLE-planet system, so there is
+#: no unmodeled second planet to blame a result on (P = 0.3693038 d, e ~ 0 -
+#: NASA Exoplanet Archive, tidally circularised). k2-24 and hd164922 are
+#: real multi-planet systems - a single-planet fit here is exploratory only
+#: (exactly the degeneracy the injection-recovery study above exists to
+#: work around), not expected to match any published orbit. All three exist
+#: to show the pipeline (dataset loading, multi-instrument
+#: CompositeLikelihood, the RadVel basis + multi-start search, all 5
+#: solvers) behaves sensibly on completely real data.
+REAL_DATASET_INITIAL_GUESSES: dict[str, OrbitParams] = {
+    "k2-24": OrbitParams(P=20.885258, tp=2067.706016317427, e=0.15, omega=0.3, K=3.0, gamma=0.0),
+    "hd164922": OrbitParams(P=1207.0, tp=2455474.0, e=0.1, omega=0.0, K=5.0, gamma=0.0),
+    "k2-131": OrbitParams(P=0.3693038, tp=2457782.65615, e=0.05, omega=0.0, K=3.0, gamma=0.0),
+}
+
+
+def run_real_data_check(dataset_name: str, solvers: list[str] | None = None,
+                        tolerances: list[float] | None = None,
+                        guess_name: str = "canonical",
+                        max_iter: int = 50) -> pd.DataFrame:
+    """Direct fit of ``dataset_name``'s REAL, unmodified velocities - no
+    injection. See :data:`REAL_DATASET_INITIAL_GUESSES` for which dataset
+    (only k2-131) is literature-comparable and which are exploratory-only.
+
+    Not part of the main injection-recovery study above - for k2-24/
+    hd164922, a genuinely circular-ish real orbit or an unmodeled extra
+    planet makes the Kepler solver's hard case less exercised here too
+    (see the module docstring), just for real astrophysical/model reasons
+    rather than the coordinate-singularity issue the injection design works
+    around.
+    """
+    if dataset_name not in REAL_DATASET_INITIAL_GUESSES:
+        raise KeyError(
+            f"no real-data initial guess registered for {dataset_name!r}; "
+            f"known: {sorted(REAL_DATASET_INITIAL_GUESSES)}"
+        )
+    solvers = solvers if solvers is not None else ["newton", "danby", "markley", "nwm9", "nwm11"]
+    tolerances = tolerances if tolerances is not None else [1e-14]
+    dataset = load_rv_dataset(dataset_name)
+    initial_guess = REAL_DATASET_INITIAL_GUESSES[dataset_name]
+
+    df = run_tolerance_sweep(dataset, initial_guess, solvers, tolerances,
+                             guess_name=guess_name, max_iter=max_iter)
+    df.insert(0, "dataset", dataset_name)
+    return df
+
+
+def run_all_real_data_checks(solvers: list[str] | None = None,
+                             tolerances: list[float] | None = None,
+                             guess_name: str = "canonical",
+                             max_iter: int = 50) -> pd.DataFrame:
+    """:func:`run_real_data_check` on every registered real dataset
+    (k2-24, hd164922, k2-131), concatenated into one DataFrame tagged by
+    the ``dataset`` column."""
+    frames = [
+        run_real_data_check(name, solvers=solvers, tolerances=tolerances,
+                            guess_name=guess_name, max_iter=max_iter)
+        for name in REAL_DATASET_INITIAL_GUESSES
+    ]
+    return pd.concat(frames, ignore_index=True)
+
+
 def run_reference_mcmc(dataset: pd.DataFrame, initial_guess: OrbitParams,
                        nrun: int | None = None, seed: int = 0) -> dict[str, float]:
     """One MCMC run, using RadVel's own (fast, compiled) solver - it only
@@ -164,13 +240,25 @@ def run_reference_mcmc(dataset: pd.DataFrame, initial_guess: OrbitParams,
     Uses :func:`keplerbench.rv.radvel_bridge.build_posterior`, so
     multi-instrument datasets get the same CompositeLikelihood handling
     ``fit_with_solver`` uses.
+
+    ``build_posterior`` fits in RadVel's ``secosw``/``sesinw``/``logk``
+    basis, not raw e/omega/K, so the chain's own columns are in that space
+    too. std(secosw) is not std(e) - e = secosw**2 + sesinw**2 is a
+    nonlinear transform - so every sample is converted to physical units
+    first, then the std is taken of THAT, not the other way round.
+
+    Also runs :func:`keplerbench.rv.radvel_bridge._find_best_starting_point`
+    first, same as ``fit_with_solver`` - starting the maximum-a-posteriori
+    fit (that seeds the walkers) from a poor local optimum would give MCMC
+    a bad starting cloud to walk from too.
     """
     import radvel
     import radvel.fitting
 
-    from keplerbench.rv.radvel_bridge import build_posterior
+    from keplerbench.rv.radvel_bridge import _find_best_starting_point, build_posterior
 
-    post, _, _ = build_posterior(dataset, initial_guess)
+    seeded_guess = _find_best_starting_point(dataset, initial_guess)
+    post, _, _ = build_posterior(dataset, seeded_guess)
     post = radvel.fitting.maxlike_fitting(post, verbose=False)
 
     # post.list_vary_params() mutates internal state and returns None in
@@ -180,12 +268,25 @@ def run_reference_mcmc(dataset: pd.DataFrame, initial_guess: OrbitParams,
     nwalkers = max(2 * n_free + 2, 10)
     chain = radvel.mcmc(post, nwalkers=nwalkers, nrun=nrun or 2000, serial=True, headless=True)
 
+    sigma: dict[str, float] = {}
+    if "secosw1" in chain.columns:
+        e_samples = chain["secosw1"] ** 2 + chain["sesinw1"] ** 2
+        w_samples = np.arctan2(chain["sesinw1"], chain["secosw1"])
+        sigma["e"] = float(e_samples.std())
+        sigma["omega"] = float(w_samples.std())
+    if "logk1" in chain.columns:
+        sigma["K"] = float(np.exp(chain["logk1"]).std())
+
+    # Everything else (jit, jit_<tel>, ...) is already in physical units -
     # RadVel's own parameter names -> the names used everywhere else in this
     # module (OrbitParams fields), so callers never juggle two vocabularies.
-    name_map = {"per1": "P", "tp1": "tp", "e1": "e", "w1": "omega",
-                "k1": "K", "gamma": "gamma", "jit": "jitter"}
-    return {name_map.get(name, name): float(chain[name].std())
-            for name in post.name_vary_params()}
+    name_map = {"jit": "jitter"}
+    converted = {"secosw1", "sesinw1", "logk1"}
+    for name in post.name_vary_params():
+        if name in converted:
+            continue
+        sigma[name_map.get(name, name)] = float(chain[name].std())
+    return sigma
 
 
 def run(config_path: str) -> pd.DataFrame:
