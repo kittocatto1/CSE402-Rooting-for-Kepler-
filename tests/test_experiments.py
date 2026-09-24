@@ -243,6 +243,12 @@ def test_grid_benchmark_survives_a_stubbed_aggregate(monkeypatch, fake_io,
     someone else's aggregate module must not throw the sweep away."""
     from keplerbench.experiments import grid_benchmark as gb
 
+    def stub(df):
+        raise NotImplementedError("summarise_grid: see TODO above")
+
+    # Injected rather than relying on aggregate still being unwritten, so
+    # this keeps testing the fallback once summarise_grid is implemented.
+    monkeypatch.setattr("keplerbench.evaluation.aggregate.summarise_grid", stub)
     _use_config(monkeypatch, _config())
     with pytest.warns(UserWarning, match="summarise_grid"):
         gb.run("ignored.yaml")
@@ -256,6 +262,12 @@ def test_grid_benchmark_preflight_fails_before_the_sweep(monkeypatch):
     sweeping."""
     from keplerbench.experiments import grid_benchmark as gb
 
+    def stub(*args, **kwargs):
+        raise NotImplementedError("save_results: see TODO above")
+
+    # Injected rather than relying on save_results still being unwritten, so
+    # this keeps testing the ordering once the io layer is implemented.
+    monkeypatch.setattr(gb, "save_results", stub)
     _use_config(monkeypatch, _config())
     swept = []
     monkeypatch.setattr(gb, "run_sweep",
@@ -266,11 +278,21 @@ def test_grid_benchmark_preflight_fails_before_the_sweep(monkeypatch):
     assert not swept, "preflight ran the sweep before checking dependencies"
 
 
-def test_grid_benchmark_reports_a_stubbed_load_config_as_a_status(monkeypatch):
-    """Running the script today must say who it is waiting on, not hand the
-    runner a bare traceback from inside someone else's module."""
+def test_grid_benchmark_reports_a_stubbed_dependency_as_a_status(monkeypatch):
+    """Running the script must say who it is waiting on, not hand the runner
+    a bare traceback from inside someone else's module.
+
+    Driven by an injected stub rather than by whatever happens to be
+    unimplemented today: the original form asserted on load_config, which
+    turned into a false alarm the moment load_config was written.
+    """
     from keplerbench.experiments import grid_benchmark as gb
 
-    with pytest.raises(NotImplementedError, match="load_config") as excinfo:
+    def stub(*args, **kwargs):
+        raise NotImplementedError("load_config: see TODO above")
+
+    monkeypatch.setattr(gb, "load_config", stub)
+    with pytest.raises(NotImplementedError) as excinfo:
         gb.run("configs/grid_benchmark.yaml")
     assert "still stubs" in str(excinfo.value)
+    assert "load_config" in str(excinfo.value)
