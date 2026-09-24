@@ -478,6 +478,21 @@ EXPERIMENT = "verification"
 #: skips every solver still writes a file with a header rather than a
 #: zero-byte one that pandas refuses to read back - the same guarantee
 #: io.results_io makes for the raw tables.
+#: Eccentricities at which the order is measured on Kepler's equation
+#: itself, for the order-versus-eccentricity figure. Weighted towards
+#: e -> 1: the whole question is whether a claimed order survives the
+#: pathological corner, and a linear sweep spends almost all its points
+#: where nothing interesting happens. Overridable via
+#: ``extra.eccentricity_scan``.
+ECCENTRICITY_SCAN = (0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99, 0.995, 0.999)
+
+#: Mean anomaly for that scan. Away from 0 so the scan isolates the effect
+#: of eccentricity rather than mixing in the M -> 0 stiffness.
+ECCENTRICITY_SCAN_M = 0.3
+
+KEPLER_ORDER_COLUMNS = ("solver", "e", "M", "measured_order", "claimed_order",
+                        "n_usable", "reason")
+
 ORDER_COLUMNS = ("solver", "function", "measured_order", "claimed_order",
                  "abs_diff", "passed", "n_usable", "iterations", "reason")
 SUMMARY_COLUMNS = (
@@ -587,8 +602,30 @@ def run(config_path: str) -> None:
             "passed": order_passed and correctness["passed"],
         })
 
+    # Order measured on KEPLER itself across the eccentricity range. This is
+    # a different question from the paper test functions above - those check
+    # the transcription, this checks whether the claimed order survives the
+    # equation we actually care about - and it is what feeds the
+    # order-versus-eccentricity figure. Nothing else persists it.
+    scan = [float(e) for e in cfg.extra.get("eccentricity_scan",
+                                            ECCENTRICITY_SCAN)]
+    scan_M = float(cfg.extra.get("eccentricity_scan_M", ECCENTRICITY_SCAN_M))
+    kepler_rows: list[dict] = []
+    for solver_name in [row["solver"] for row in summary_rows]:
+        try:
+            kepler_rows.extend(measure_order_on_kepler(
+                solver_name, [(e, scan_M) for e in scan],
+                n_iterations=max(cfg.max_iter, 10), dps=dps))
+        except (NotImplementedError, ArithmeticError) as exc:
+            warnings.warn(
+                f"eccentricity scan: skipping {solver_name}: {exc}",
+                stacklevel=2,
+            )
+
     order_path = _save_table(order_rows, ORDER_COLUMNS, "order.csv", cfg)
     summary_path = _save_table(summary_rows, SUMMARY_COLUMNS, "summary.csv", cfg)
+    kepler_path = _save_table(kepler_rows, KEPLER_ORDER_COLUMNS,
+                              "kepler_order.csv", cfg)
 
     print()
     for row in summary_rows:
@@ -608,6 +645,7 @@ def run(config_path: str) -> None:
     print()
     print(f"wrote {order_path}")
     print(f"wrote {summary_path}")
+    print(f"wrote {kepler_path}")
     if n_failed:
         # Loud, because the project's rule is that a solver does not enter
         # the grid benchmark until this passes.
