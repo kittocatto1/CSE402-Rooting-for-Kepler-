@@ -144,6 +144,15 @@ def test_load_rv_dataset_hd164922_is_multi_instrument():
         assert (df["errvel"] > 0).all()
 
 
+def test_load_rv_dataset_k2131_is_multi_instrument():
+    with skip_if_unimplemented():
+        df = load_rv_dataset("k2-131")
+        assert list(df.columns) == ["time", "mnvel", "errvel", "tel"]
+        assert len(df) == 70
+        assert set(df["tel"].unique()) == {"harps-n", "pfs"}
+        assert (df["errvel"] > 0).all()
+
+
 # ----------------------------------------------------------------------
 # rv/radvel_bridge.py.  Needs a real, implemented solver underneath - uses
 # "newton" explicitly, not the "danby" default, so these run regardless of
@@ -339,6 +348,46 @@ def test_error_propagation_run_needs_config_loading():
     it should skip cleanly until that lands, not fail."""
     with skip_if_unimplemented():
         error_propagation.run("configs/error_propagation.yaml")
+
+
+def test_real_data_check_all_solvers_agree_on_k2131():
+    """K2-131 is a genuine single-planet system, so a direct fit of its
+    real velocities has no unmodeled-second-planet degeneracy to blame the
+    result on. What this checks: all 5 solvers converge to the SAME answer
+    on completely real data, with nothing injected.
+
+    That answer (e ~ 0.13) does NOT match the literature's e ~ 0 (NASA
+    Exoplanet Archive - K2-131 b is tidally circularised). A direct
+    log-likelihood comparison (see rv/radvel_bridge.py's build_posterior
+    docstring) found e~0 and e~0.13 are statistically indistinguishable
+    here (log-likelihood differs by ~0.1) - our RV-only maximum-likelihood
+    point estimate genuinely cannot resolve this from noise alone. That
+    mismatch is an honest, worth-reporting finding about the limits of
+    point estimates on weak-signal data, not a pipeline bug."""
+    with skip_if_unimplemented():
+        df = error_propagation.run_real_data_check("k2-131")
+
+        assert len(df) == 5
+        assert df["e"].std() < 1e-3    # solvers agree with each other
+        assert df["K"].std() < 1e-2
+
+
+def test_real_data_check_all_solvers_agree_on_k2_24():
+    """K2-24 IS a two-planet system, so this is exploratory only (see the
+    module docstring for why) - the point of this check is that all 5
+    solvers agree with each other on the same real, unmodified data."""
+    with skip_if_unimplemented():
+        df = error_propagation.run_real_data_check("k2-24")
+        assert len(df) == 5
+        assert df["e"].std() < 1e-3
+        assert df["K"].std() < 1e-2
+
+
+def test_run_all_real_data_checks_covers_every_registered_dataset():
+    with skip_if_unimplemented():
+        df = error_propagation.run_all_real_data_checks(solvers=["newton", "danby"])
+        assert set(df["dataset"]) == set(error_propagation.REAL_DATASET_INITIAL_GUESSES)
+        assert len(df) == 2 * len(error_propagation.REAL_DATASET_INITIAL_GUESSES)
 
 
 # ----------------------------------------------------------------------

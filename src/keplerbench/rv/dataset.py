@@ -26,6 +26,12 @@ _KNOWN_DATASETS: dict[str, dict] = {
         "rename": {},
         "tel": None,  # already has a real, multi-instrument tel column
     },
+    "k2-131": {
+        "filename": "k2-131.txt",
+        "read_kwargs": {"sep": r"\s+"},
+        "rename": {},
+        "tel": None,  # already has a real, multi-instrument tel column
+    },
 }
 
 
@@ -39,9 +45,13 @@ def load_rv_dataset(name: str) -> pd.DataFrame:
     - ``"hd164922"``: 401 points across 3 HIRES eras/setups (multi-
       instrument - see ``rv.radvel_bridge.build_posterior`` for how that is
       handled), a multi-planet system.
+    - ``"k2-131"``: 70 points across 2 instruments (HARPS-N, PFS), a genuine
+      SINGLE-planet system - used only as a real-data sanity check (see
+      ``experiments.error_propagation.run_real_data_sanity_check``), not the
+      main injection-recovery study, since its real orbit is circular.
 
-    See ``data/README.md`` for provenance and citation. Both are real,
-    moderately eccentric, multi-planet systems, so the Kepler solver's
+    See ``data/README.md`` for provenance and citation. k2-24/hd164922 are
+    real, moderately eccentric, multi-planet systems, so the Kepler solver's
     accuracy is not irrelevant to a fit the way it would be for a circular
     orbit.
     """
