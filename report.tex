@@ -196,8 +196,7 @@ at high eccentricity.
   \item \key{The proposal's central cost premise does not hold in this
         implementation.} A combined \texttt{sincos} evaluation was assumed
         to cost about one transcendental call; measured, it costs
-        $2.35$ --- statistically indistinguishable from two separate
-        calls. The discount the argument rests on is absent in CPython.
+        $2.44$, within timing noise of two separate calls ($2.06$). The discount the argument rests on is absent in CPython.
   \item \key{Downstream, none of it matters.} Solver-induced shifts in the
         fitted orbital parameters are three orders of magnitude smaller
         than the spread caused by measurement noise in the data.
@@ -307,15 +306,16 @@ Guess layer & Napier's guess (2024) & n/a & Symbolic-regression start, run in fr
 \label{sec:verify}
 
 The project's rule was that no solver enters the grid benchmark until its
-measured convergence order matches its source paper's claim on that
-paper's own test functions. This is what separates ``the method
+measured convergence order matches its source paper's claim. This is what separates ``the method
 underperforms'' from ``we mistyped the method''.
 
 \subsection{Measured convergence order}
 
 Each solver was run on the eight nonlinear test functions of the NWM11
 paper, from the paper's own starting points, at 2000-digit working
-precision.
+precision. NWM9 comes from a different paper with its own examples, but
+it was gated on the same NWM11 set; checking it on its own paper's
+functions remains to be done (\texttt{experiments/verification.py}).
 
 \begin{center}
 \small
@@ -462,16 +462,24 @@ with $\sin$-only normalised to $1.0$:
 \textbf{Operation} & \textbf{Relative cost} & \textbf{Proposal assumed} \\
 \midrule
 $\sin$ only                      & 1.000 & 1 \\
-$\cos$ only                      & 0.989 & 1 \\
-$(\sin,\cos)$ pair               & \textbf{2.354} & $\approx 1$ \\
-Synthesised derivative (Hermite) & 1.691 & --- \\
+$\cos$ only                      & 1.06 & 1 \\
+$(\sin,\cos)$ pair               & \textbf{2.44} & $\approx 1$ \\
+Synthesised derivative (Hermite) & 1.35 & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
+These are the weights every weighted cost in this report is computed with
+(\texttt{DEFAULT\_WEIGHTS} in \texttt{evaluation/cost\_model.py}). For
+example, Newton's $3.44$ per iteration is one pair plus one $\sin$. They
+are machine-dependent and noisy: a repeat measurement with
+\texttt{measure\_weights\_with\_spread} spread the pair over roughly
+$1.1$--$2.7$ across seven runs.
+
 \begin{finding}{The sincos discount does not exist in this implementation}
-A combined $(\sin,\cos)$ evaluation costs $2.354$ against $1.989$ for two
-separate calls --- not a discount but a small penalty. In pure Python
+A combined $(\sin,\cos)$ evaluation costs $2.44$ against $2.06$ for two
+separate calls. Given the run-to-run spread, that difference is within
+noise: the pair costs about the same as two calls, not one. In pure Python
 there is no fused \texttt{sincos} instruction to exploit: each call
 crosses the interpreter boundary separately.
 
@@ -582,7 +590,7 @@ which extends past $M = \pi$ where the uniform block stops.}
 \emph{Left}: accuracy against weighted cost per solve. Every method reaches
 the same $\approx 15.8$ correct digits, so the axis that separates them is
 cost, not accuracy --- which is the empirical form of the argument in
-Section~7. \emph{Right}: the generic efficiency index
+Section~\ref{sec:downstream}. \emph{Right}: the generic efficiency index
 $\rho^{1/\gamma}$ against the Kepler costing. The two disagree in rank
 order: the generic index places NWM9 and NWM11 highest, while on median
 correct digits per call Newton leads. This is precisely the mismatch the
@@ -676,12 +684,13 @@ resolve. NWM11 tracks its claim across the full range while NWM9 collapses
 beyond $e \approx 0.99$.}
 
 \pipelinefigure{figures/convergence/measured_vs_claimed_order.pdf}{0.86}{%
-Measured convergence order against each source paper's claim on the
-paper's own test functions. Error bars show the spread across the eight
+Measured convergence order against each source paper's claim, on the
+NWM11 paper's eight test functions (used for every solver). Error bars show the spread across the eight
 functions.}
 
 % =========================================================================
 \section{Downstream: Does Any of It Matter?}
+\label{sec:downstream}
 
 Solver error was traced through $M \rightarrow E \rightarrow \nu
 \rightarrow v_r$ into refitted orbital parameters, with each of our
