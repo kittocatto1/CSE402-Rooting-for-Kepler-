@@ -1,22 +1,3 @@
-"""Downstream propagation figures. Owner: Fariha.
-
-These draw, they never compute - every function takes a DataFrame (or dict)
-that ``evaluation/propagation.py`` produced, matching the convention the
-rest of ``plotting/`` follows.
-
-Expected inputs
----------------
-``shift_df``    one row per (solver, tolerance), as produced by
-                ``evaluation.propagation.shift_in_sigma``:
-                solver, tolerance, <param>_shift, <param>_shift_sigma (+
-                <param>_shift_rel), for param in e/omega/K/gamma/jitter.
-
-``budget_df``   one row per parameter, as produced by
-                ``evaluation.propagation.compare_error_budgets``:
-                parameter, solver_induced_shift, noise_driven_spread,
-                mcmc_sigma, ratio_solver_to_noise.
-"""
-
 from __future__ import annotations
 
 import numpy as np
@@ -32,7 +13,6 @@ __all__ = [
     "plot_amplification",
 ]
 
-#: Pretty labels for the report/slides.
 _PARAM_LABELS = {"P": "$P$", "e": "$e$", "omega": r"$\omega$", "K": "$K$",
                 "gamma": r"$\gamma$", "jitter": "jitter"}
 
@@ -47,25 +27,7 @@ def _solver_color(name: str) -> str:
     return SOLVER_COLORS.get(str(name), "#666666")
 
 
-# ----------------------------------------------------------------------
-# 1. Tolerance vs parameter shift
-# ----------------------------------------------------------------------
 def plot_tolerance_vs_parameter_shift(shift_df):
-    """Solver tolerance on x, shift in each parameter on y, in units of sigma.
-
-    One panel per parameter that has a ``<param>_shift_sigma`` column, one
-    line per solver, log x axis. Horizontal reference lines at 1 sigma and
-    0.1 sigma let the reader read off the tolerance at which the solver
-    stops mattering.
-
-    A shift of EXACTLY zero (two tolerances landing on a bit-identical fit -
-    e.g. once solver tolerance is tighter than the optimiser's own xtol,
-    RadVel's Powell fit stops moving at all) cannot be drawn on a log axis.
-    Those points are drawn as hollow markers at a shared floor rather than
-    silently dropped, the same convention ``convergence_plots.py`` uses for
-    exact-zero residuals: "hit zero" is a real, different outcome from
-    "very small", and dropping the point would look like missing data.
-    """
     _require(shift_df, ["solver", "tolerance"], "plot_tolerance_vs_parameter_shift")
 
     params = [p for p in TRACKED_PARAMS if f"{p}_shift_sigma" in shift_df.columns]
@@ -93,6 +55,7 @@ def plot_tolerance_vs_parameter_shift(shift_df):
 
             ax.plot(tol[is_positive], value[is_positive], color=_solver_color(solver),
                    marker="o", markersize=3.5, linewidth=1.6, label=str(solver))
+            # exact zeros can't sit on a log axis: draw them hollow at a floor
             if (~is_positive).any():
                 ax.plot(tol[~is_positive], np.full((~is_positive).sum(), floor),
                        color=_solver_color(solver), linestyle="none",
@@ -108,7 +71,7 @@ def plot_tolerance_vs_parameter_shift(shift_df):
 
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.invert_xaxis()  # tighter tolerance (smaller number) reads left-to-right as "more precise"
+        ax.invert_xaxis()
         ax.set_xlabel("solver tolerance")
         ax.set_ylabel(f"|shift| in {_PARAM_LABELS.get(param, param)}  ($\\sigma$)")
         ax.set_title(_PARAM_LABELS.get(param, param))
@@ -118,16 +81,7 @@ def plot_tolerance_vs_parameter_shift(shift_df):
     return fig
 
 
-# ----------------------------------------------------------------------
-# 2. Error budget bars
-# ----------------------------------------------------------------------
 def plot_error_budget(budget_df, ax=None):
-    """Side-by-side bars: solver-induced shift vs noise spread vs MCMC sigma.
-
-    One group per parameter, log y axis - the whole point of this figure is
-    that these three quantities live at very different scales, and the plot
-    should make that gap impossible to miss.
-    """
     _require(budget_df, ["parameter", "solver_induced_shift",
                         "noise_driven_spread", "mcmc_sigma"], "plot_error_budget")
 
@@ -160,17 +114,7 @@ def plot_error_budget(budget_df, ax=None):
     return ax.figure if created else ax
 
 
-# ----------------------------------------------------------------------
-# 3. Analytic amplification factor
-# ----------------------------------------------------------------------
 def plot_amplification(e_values, ax=None):
-    """dnu/dE against E for several eccentricities.
-
-    Purely analytic (``rv.anomaly.dE_to_dnu``) - explains WHY the
-    high-eccentricity corner matters downstream: an error in E is amplified
-    by exactly this factor on its way into nu, and it grows sharply for
-    e -> 1 near E -> 0.
-    """
     created = ax is None
     if created:
         _, ax = plt.subplots()

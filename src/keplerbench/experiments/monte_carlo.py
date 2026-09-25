@@ -1,13 +1,3 @@
-"""Work Plan step 5 - solver-induced shift vs measurement-noise scatter.
-
-Step 4 tells us how much the fitted parameters move when the solver is
-sloppy.  On its own that number is meaningless: it only matters relative to
-how much the parameters move anyway because the data are noisy.  This
-experiment measures that second quantity.
-
-Owner: Fariha.
-"""
-
 from __future__ import annotations
 
 import math
@@ -34,27 +24,12 @@ def run_monte_carlo(dataset: pd.DataFrame, truth: OrbitParams, jitter: float,
                     n_realisations: int, solver_name: str, tol: float,
                     guess_name: str = "canonical", max_iter: int = 50,
                     seed: int = 0, include_jitter: bool = True) -> pd.DataFrame:
-    """Refit ``n_realisations`` independent noisy realisations of ``truth``.
-
-    Each realisation reuses ``dataset``'s real observation times, and draws
-    fresh noise from the per-point measurement uncertainties (``errvel``),
-    plus ``jitter`` added in quadrature if ``include_jitter``. One fixed
-    (solver, tol) pair is used throughout - this experiment isolates
-    measurement-noise scatter, not solver behaviour (that was step 4).
-
-    ``truth.gamma`` is NaN when ``truth`` came from a multi-instrument fit
-    (see ``rv.radvel_bridge.build_posterior`` - there is no single systemic
-    velocity across instruments, only one per instrument). The curve
-    generated here is the injected orbit only, with no instrument-dependent
-    offset baked in (the same convention ``error_propagation.INJECTED_TRUTH``
-    already uses, with its ``gamma=0.0``) - a NaN would otherwise poison
-    every point of the curve, so it is treated as 0 here too.
-    """
     rng = np.random.default_rng(seed)
     times = dataset["time"].to_numpy(dtype=float)
     errvel = dataset["errvel"].to_numpy(dtype=float)
     sigma = np.sqrt(errvel**2 + jitter**2) if include_jitter else errvel
 
+    # gamma is NaN after a multi-instrument fit; the injected curve has none
     curve_truth = replace(truth, gamma=0.0) if math.isnan(truth.gamma) else truth
     truth_curve = noiseless_curve(times, curve_truth)
 
@@ -76,19 +51,6 @@ def run_monte_carlo(dataset: pd.DataFrame, truth: OrbitParams, jitter: float,
 
 
 def run(config_path: str) -> pd.DataFrame:
-    """Entry point used by scripts/run_monte_carlo.py.
-
-    1. Loads the config and rebuilds the SAME injected dataset
-       ``error_propagation.py`` uses (same seed; same injected truth, read
-       from ``extra.injected_truth`` if given, else the shared default -
-       must match error_propagation.yaml's setting to be the same study).
-    2. Takes the config's one fixed solver, fit at tight tolerance, as the
-       "best-fit model" to generate realisations around.
-    3. Refits N noisy realisations and writes their parameter spread.
-
-    Writes results/monte_carlo/raw.csv (one row per realisation) and
-    summary.csv (std dev per parameter - the noise-driven uncertainty).
-    """
     cfg = load_config(config_path)
     dataset_name = cfg.extra.get("dataset") or "k2-24"
     real_dataset = load_rv_dataset(dataset_name)

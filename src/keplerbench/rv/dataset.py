@@ -1,8 +1,3 @@
-"""Loading the real radial-velocity dataset used in steps 4 and 5.
-
-Owner: Fariha.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,9 +5,6 @@ from pathlib import Path
 import pandas as pd
 
 
-#: name -> loading spec: the raw file, how pandas should read it, a
-#: raw-column -> canonical-column rename map, and (only for single-
-#: instrument files that don't record one) a fixed telescope label.
 _KNOWN_DATASETS: dict[str, dict] = {
     "k2-24": {
         "filename": "k2-24.csv",
@@ -24,37 +16,18 @@ _KNOWN_DATASETS: dict[str, dict] = {
         "filename": "hd164922.txt",
         "read_kwargs": {"sep": r"\s+"},
         "rename": {},
-        "tel": None,  # already has a real, multi-instrument tel column
+        "tel": None,
     },
     "k2-131": {
         "filename": "k2-131.txt",
         "read_kwargs": {"sep": r"\s+"},
         "rename": {},
-        "tel": None,  # already has a real, multi-instrument tel column
+        "tel": None,
     },
 }
 
 
 def load_rv_dataset(name: str) -> pd.DataFrame:
-    """Return a DataFrame with columns: time, mnvel, errvel, tel.
-
-    Two datasets are available:
-
-    - ``"k2-24"`` (EPIC 203771098): 32 HIRES points, single instrument, a
-      two-planet sub-Saturn system.
-    - ``"hd164922"``: 401 points across 3 HIRES eras/setups (multi-
-      instrument - see ``rv.radvel_bridge.build_posterior`` for how that is
-      handled), a multi-planet system.
-    - ``"k2-131"``: 70 points across 2 instruments (HARPS-N, PFS), a genuine
-      SINGLE-planet system - used only as a real-data sanity check (see
-      ``experiments.error_propagation.run_real_data_sanity_check``), not the
-      main injection-recovery study, since its real orbit is circular.
-
-    See ``data/README.md`` for provenance and citation. k2-24/hd164922 are
-    real, moderately eccentric, multi-planet systems, so the Kepler solver's
-    accuracy is not irrelevant to a fit the way it would be for a circular
-    orbit.
-    """
     key = name
     for ext in (".csv", ".txt"):
         if key.endswith(ext):
@@ -72,5 +45,4 @@ def load_rv_dataset(name: str) -> pd.DataFrame:
 
 
 def dataset_path(name: str) -> Path:
-    """Path to a raw data file under data/raw/."""
     return Path(__file__).resolve().parents[3] / "data" / "raw" / name
