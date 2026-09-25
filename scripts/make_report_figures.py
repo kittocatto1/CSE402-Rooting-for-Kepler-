@@ -40,7 +40,6 @@ import pandas as pd
 matplotlib.use("Agg")           # no display on a lab machine or in CI
 import matplotlib.pyplot as plt  # noqa: E402
 
-from keplerbench.io.config import load_config  # noqa: E402
 from keplerbench.io.results_io import REPO_ROOT, load_results  # noqa: E402
 from keplerbench.plotting import (  # noqa: E402
     convergence_plots,
@@ -93,9 +92,9 @@ def _endpoints(history: pd.DataFrame) -> tuple[tuple[float, float], tuple[float,
 
 def _panels(n: int) -> tuple[plt.Figure, list[plt.Axes]]:
     """A row-major grid of axes wide enough for ``n`` panels."""
-    cols = min(n, 2)
+    cols = min(n, 3)
     rows = (n + cols - 1) // cols
-    fig, axes = plt.subplots(rows, cols, figsize=(5.2 * cols, 3.6 * rows),
+    fig, axes = plt.subplots(rows, cols, figsize=(5.0 * cols, 3.6 * rows),
                              squeeze=False)
     flat = [ax for row in axes for ax in row]
     for ax in flat[n:]:
@@ -137,22 +136,13 @@ def _order_vs_eccentricity() -> plt.Figure:
 
 def _iterations_heatmaps() -> plt.Figure:
     df = load_results(GRID, "raw.csv")
-    uniform = load_config(str(REPO_ROOT / "configs/grid_benchmark.yaml")).grid["uniform"]
-    n_e, n_M = int(uniform["n_e"]), int(uniform["n_M"])
-    n_uniform = n_e * n_M
-    # build_grid emits the regular lattice first. Keep only that complete
-    # block for each pair: mixing it with the log grid and random sample
-    # creates empty display bins that look like missing uniform observations.
-    uniform_rows = df.groupby(["solver", "guess"], sort=False, group_keys=False).head(n_uniform)
-    pairs = [("nwm9", "simple"), ("nwm9", "napier")]
-    for solver, guess in pairs:
-        panel = uniform_rows[(uniform_rows["solver"] == solver) & (uniform_rows["guess"] == guess)]
-        if len(panel) != n_uniform or panel["e"].nunique() != n_e or panel["M"].nunique() != n_M:
-            raise ValueError(f"incomplete uniform grid for {solver}+{guess}")
-    vmax = grid_plots.shared_iteration_scale(uniform_rows)
-    fig, axes = plt.subplots(2, 1, figsize=(5.2, 7.2))
+    pairs = sorted(df.groupby(["solver", "guess"]).groups)
+    # One colour scale for every panel: per-panel scaling would let two
+    # panels that look identical describe different iteration counts.
+    vmax = grid_plots.shared_iteration_scale(df)
+    fig, axes = _panels(len(pairs))
     for ax, (solver, guess) in zip(axes, pairs):
-        grid_plots.plot_iterations_heatmap(uniform_rows, solver, guess, ax=ax, vmax=vmax)
+        grid_plots.plot_iterations_heatmap(df, solver, guess, ax=ax, vmax=vmax)
     fig.tight_layout()
     return fig
 
@@ -163,10 +153,6 @@ def _failure_maps() -> plt.Figure:
     fig, axes = _panels(len(solvers))
     for ax, solver in zip(axes, solvers):
         grid_plots.plot_failure_map(df, solver, ax=ax)
-        # The report caption states which boundary points cannot appear on
-        # logarithmic axes; repeating that sentence in five titles crowds
-        # otherwise useful panels.
-        ax.set_title(solver)
     fig.tight_layout()
     return fig
 
