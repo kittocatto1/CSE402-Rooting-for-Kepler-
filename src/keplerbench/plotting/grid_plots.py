@@ -243,10 +243,16 @@ def plot_iterations_heatmap(df, solver: str, guess: str, ax=None,
         _, ax = plt.subplots()
 
     colormap = plt.get_cmap(cmap).with_extremes(bad=MISSING_COLOR)
+    # rasterized: each panel is a mesh of tens of thousands of cells, and as
+    # vector paths in a PDF that came to 14 MB across every panel - large
+    # enough to time out a hosted LaTeX build. Rasterising the mesh alone
+    # leaves the axes, labels and colourbar as vector text, so the figure
+    # still scales cleanly in print, and drops the file by roughly 20x.
     mesh = ax.pcolormesh(
         _mesh_edges(M_values), _mesh_edges(e_values),
         np.ma.masked_invalid(iterations),
         cmap=colormap, vmin=0.0, vmax=vmax, shading="flat",
+        rasterized=True,
     )
     # Overlay the failures so they sit on top of the colormap, never in it.
     failure_layer = np.ma.masked_where(~(failed > 0.0), failed)
@@ -254,6 +260,7 @@ def plot_iterations_heatmap(df, solver: str, guess: str, ax=None,
         ax.pcolormesh(
             _mesh_edges(M_values), _mesh_edges(e_values), failure_layer,
             cmap=ListedColormap([NON_CONVERGED_COLOR]), shading="flat",
+            rasterized=True,
         )
 
     ax.set_xlabel("mean anomaly $M$")
