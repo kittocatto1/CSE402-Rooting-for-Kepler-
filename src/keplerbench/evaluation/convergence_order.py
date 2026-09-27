@@ -1,25 +1,25 @@
-"""Empirical convergence order, measured - not taken from the paper.
+"""Measure how fast a solver converges, instead of trusting the paper.
 
-The proposal is explicit about this: we measure the order from the residual
-sequence we actually observe.  A claimed order of 10.7446 that shows up as
-4 in practice is itself a result worth reporting.
+A paper claims "order 10.7446". That is a checkable statement about how
+quickly the error shrinks each step, so we measure it from the numbers the
+solver actually produces. A method that claims 10.7446 and delivers 4 is a
+result worth reporting.
 
 Two standard estimators:
 
-  COC  (computational order of convergence) - needs the true root:
+  COC  needs the true root:
         p ~ ln|e_{n+1}/e_n| / ln|e_n/e_{n-1}|,   e_n = |x_n - x*|
 
-  ACOC (approximated COC) - uses successive differences instead of the true
-        root, so it works when x* is unknown:
+  ACOC uses the gaps between successive iterates instead, so it works
+        even when the true root is unknown:
         p ~ ln|d_{n+1}/d_n| / ln|d_n/d_{n-1}|,   d_n = |x_n - x_{n-1}|
 
 Precision
 ---------
-Every function here is arithmetic-agnostic: pass Python floats and you get
-floats back, pass ``mpmath.mpf`` and the whole computation stays at the
-working precision of the mpmath context.  That matters because a method of
-order ~10 exhausts double precision in two iterations, leaving no usable
-triple at all - see :func:`order_from_history`.
+Everything here works with plain floats and with mpmath numbers, and keeps
+whatever precision it is given. That matters: an order-10 method uses up
+all 16 digits of a double in two steps, which leaves nothing to measure.
+See :func:`order_from_history`.
 
 Owner: Suchi.
 """
@@ -45,10 +45,10 @@ __all__ = [
 
 
 # ----------------------------------------------------------------------
-# Arithmetic helpers.  These exist so the estimators work unchanged on
-# float and on mpmath.mpf.  Do NOT replace them with math.log: math.log on
-# an mpf silently narrows to double via __float__, which destroys exactly
-# the precision the verification step is paying for.
+# Small helpers so the estimators work on floats and mpmath numbers alike.
+# Do NOT swap these for plain math.log: given an mpmath number it quietly
+# converts to a double first, throwing away the precision we are paying
+# for.
 # ----------------------------------------------------------------------
 def _is_mp(x: object) -> bool:
     return isinstance(x, (mp.mpf, mp.mpc))
@@ -81,21 +81,20 @@ def _isnan(x) -> bool:
 
 
 def _triple_order(a, b, c):
-    """One order estimate from three consecutive error magnitudes.
+    """One order estimate from three errors in a row.
 
-    Returns nan rather than raising whenever the estimate is undefined, so
-    the caller can see *where* the sequence stopped being informative.
+    Returns nan instead of raising when the estimate is undefined, so the
+    caller can see exactly where the sequence stopped being useful.
     """
     nan = _nan_like(a)
     for v in (a, b, c):
         if not _isfinite(v) or v <= 0:
             return nan
 
-    # log(c) - log(b) rather than log(c / b): these sequences span 1e-2 down
-    # to 1e-300 and beyond, where the ratio underflows to 0 (or overflows)
-    # while the difference of logs stays perfectly well scaled.  The outer
-    # quotient is a ratio of two O(1)-O(1000) numbers, so there is no
-    # cancellation problem to trade against.
+    # Subtract the logs rather than take log(c/b). These errors run from
+    # 1e-2 down past 1e-300, where the ratio underflows to zero but the
+    # difference of logs stays a sensible size. The final division is
+    # between two ordinary numbers, so nothing is lost either way.
     numerator = _log(c) - _log(b)
     denominator = _log(b) - _log(a)
 
@@ -110,16 +109,15 @@ def _triple_order(a, b, c):
 # Estimators
 # ----------------------------------------------------------------------
 def coc(errors: Sequence[float]) -> list[float]:
-    """Per-step COC estimates from a sequence of absolute errors.
+    """One order estimate per group of three consecutive errors.
 
-    One estimate per usable triple ``(e_{n-1}, e_n, e_{n+1})``, so a run of
-    ``k`` errors yields ``k - 2`` estimates.  Positions where the estimate is
-    undefined - a zero or negative error, a non-finite value, or two equal
-    consecutive errors (which makes the denominator ``log(1) = 0``) - come
-    back as ``nan`` **in place** rather than being dropped, so the index of
-    an estimate always identifies which triple produced it.
+    A run of k errors gives k - 2 estimates. Where an estimate cannot be
+    formed - a zero or negative error, a non-finite one, or two equal
+    errors in a row, which would divide by log(1) = 0 - the result is nan
+    AT THAT POSITION rather than dropped. Keeping the position means the
+    index always tells you which three errors produced which estimate.
 
-    Use :func:`last_finite` to get the asymptotic estimate out of the result.
+    Use :func:`last_finite` to pull the final usable estimate out.
     """
     n = len(errors)
     if n < 3:
@@ -129,12 +127,11 @@ def coc(errors: Sequence[float]) -> list[float]:
 
 
 def acoc(iterates: Sequence[float]) -> list[float]:
-    """Per-step ACOC estimates from the iterate sequence itself.
+    """Same estimate, but from the iterates alone - no true root needed.
 
-    Identical estimator to :func:`coc`, applied to the step magnitudes
-    ``d_n = |x_n - x_{n-1}|``.  Needs one more input than ``coc`` (four
-    iterates give three steps give one estimate) because the differencing
-    costs a term.
+    Runs :func:`coc` on the gaps between iterates, d_n = |x_n - x_{n-1}|.
+    Needs one more input than ``coc`` does, because taking differences
+    costs a term: four iterates give three gaps give one estimate.
     """
     n = len(iterates)
     if n < 4:
@@ -144,13 +141,12 @@ def acoc(iterates: Sequence[float]) -> list[float]:
 
 
 def last_finite(estimates: Sequence[float]) -> float | None:
-    """The last usable estimate in a run, or None if there is none.
+    """The last usable estimate, or None if there is not one.
 
-    This is deliberately *last* rather than an average.  Early estimates are
-    pre-asymptotic (the method has not settled into its order yet) and late
-    ones, once the sequence reaches the precision floor, are pure round-off
-    noise.  Averaging the three regimes together produces a number that
-    describes none of them.
+    Last rather than the average, on purpose. Early estimates come before
+    the method has settled into its true rate; late ones, past the
+    precision floor, are just rounding noise. Averaging all three phases
+    gives a number that describes none of them.
     """
     for value in reversed(estimates):
         if _isfinite(value) and not _isnan(value):
@@ -163,21 +159,21 @@ def last_finite(estimates: Sequence[float]) -> float | None:
 # ----------------------------------------------------------------------
 @dataclass
 class OrderEstimate:
-    """The order measured for one solve, plus why it is (or is not) usable.
+    """The measured order for one solve, plus why it can or cannot be used.
 
-    ``aggregate.py`` needs the diagnostic fields to report how often the
-    measurement failed; a bare float cannot carry that.
+    The extra fields exist because ``aggregate.py`` has to report how often
+    the measurement failed, and a bare number cannot say that.
     """
 
-    #: Measured order, or nan when no usable triple existed.
+    #: The measured order, or nan if there was nothing usable to measure.
     value: float
-    #: How many terms of the sequence were in the pre-floor regime.
+    #: How many terms were above the precision floor.
     n_usable: int
-    #: How many terms the history contained in total.
+    #: How many terms the history had in total.
     n_total: int
-    #: "error" (measured against the reference root) or "step" (ACOC).
+    #: "error" if measured against the true root, "step" if from the gaps.
     source: str
-    #: Human-readable explanation, always set.
+    #: Plain-English explanation. Always filled in.
     reason: str
 
     def ok(self) -> bool:
@@ -185,31 +181,29 @@ class OrderEstimate:
 
 
 def _working_floor(scale, like=None) -> float:
-    """Smallest error magnitude that still means something.
+    """The smallest error that still means anything.
 
-    Two different limits, whichever is active:
+    Two things set this limit, whichever bites first:
 
-    * the arithmetic cannot represent a relative difference below its own
+    * the arithmetic itself cannot hold a difference smaller than its own
       epsilon, and
-    * the REFERENCE ROOT is itself only known to the working precision, so
-      ``|x_n - xi|`` below ``|xi| * 10**-dps`` is measuring the error in
-      ``xi``, not in ``x_n``.
+    * the reference root is only known to so many digits, so an "error"
+      below |root| * 10**-dps is really measuring the error in the
+      reference, not in the iterate.
 
-    The second one bites in exactly the regime this project cares about.  A
-    high-order method can overshoot the reference root's own accuracy in a
-    single step, and the resulting "error" keeps *decreasing* - so the
-    stagnation test below cannot see it - while being pure noise.  Measured
-    against a 2000-digit root, an order-8 method reported 3.38 instead of
-    8.00 for precisely this reason.
+    The second one caused a real bug. A fast method can overshoot the
+    reference root in a single step, and the error then keeps GETTING
+    SMALLER while meaning nothing - so the stagnation check below cannot
+    spot it. Against a 2000-digit root, an order-8 method came back as 3.38.
 
-    Two digits of guard are left above the limit.
+    Two digits of margin are left above the limit.
 
-    ``like`` is a sample value from the sequence being measured, used only to
-    pick the arithmetic when ``scale`` cannot supply it.  That matters: a root
-    at exactly zero, or an empty history, used to fall through to a Python
-    ``1`` and hand back a *double-precision* floor of 2.2e-14 even inside a
-    2000-digit context, truncating an mpf error sequence roughly 1980 orders
-    of magnitude too early and reporting the run as unmeasurable.
+    ``like`` is any value from the sequence, used only to work out which
+    kind of arithmetic we are in when ``scale`` cannot say. That matters:
+    with a root at exactly zero, or an empty history, this used to fall back
+    to a plain 1 and return a double-precision floor of 2.2e-14 even inside
+    a 2000-digit run - cutting the sequence off about 1980 orders of
+    magnitude too early and calling the whole run unmeasurable.
     """
     working_in_mp = _is_mp(scale) or _is_mp(like)
     one = mp.mpf(1) if working_in_mp else 1.0
@@ -228,18 +222,17 @@ def _working_floor(scale, like=None) -> float:
 
 
 def _reference_scale(iterates: Sequence[float], magnitudes: Sequence[float]):
-    """Best available estimate of |root|, robust to a divergent tail.
+    """Best guess at how big the root is, safe against a run that blows up.
 
-    The floor is relative to where the root sits, so it needs |root|.  The
-    obvious proxy - the final iterate - is wrong for any run that converges
-    and then blows up: one iterate of 1e64 sets a floor of 2.2e50, every
-    genuine error falls below it, and a clean order-2 run is reported as
-    unmeasurable.  A solver that diverges in the pathological corner does
-    exactly this, so it is not a hypothetical.
+    The floor is relative to the root, so we need its size. The obvious
+    choice - the last iterate - is wrong for a run that converges and then
+    diverges: a single iterate of 1e64 puts the floor at 2.2e50, above every
+    real error, and a clean order-2 run gets reported as unmeasurable.
+    Solvers really do this in the pathological corner.
 
-    Use instead the iterate that came CLOSEST to the root, which is the best
-    information the history contains about the root's magnitude.  For a
-    well-behaved run that is the last iterate anyway, so nothing changes.
+    Use the iterate that came CLOSEST to the root instead. That is the best
+    evidence the history holds about the root's size. For a well-behaved run
+    it is the last iterate anyway, so nothing changes.
     """
     best = None
     best_magnitude = None
@@ -252,27 +245,26 @@ def _reference_scale(iterates: Sequence[float], magnitudes: Sequence[float]):
 
 
 def _usable_prefix(magnitudes: Sequence[float], floor=None) -> list[float]:
-    """The asymptotic window of an error sequence.
+    """The part of the sequence that is actually worth measuring.
 
-    Two different things have to be trimmed, from opposite ends.
+    Two things need trimming, from opposite ends.
 
-    At the TAIL, once a method reaches the precision floor the error stops
-    being informative - it stalls, bounces, drops to exactly zero, or (against
-    a finite-precision reference root) keeps shrinking while measuring nothing
-    but the reference's own error.  ``floor`` cuts that off; the stagnation
-    test alone cannot see the last case, because the numbers keep falling.
+    At the END: once the method hits the precision floor the error stops
+    telling us anything - it stalls, bounces, hits exactly zero, or keeps
+    shrinking while only measuring the reference root's own error. ``floor``
+    cuts that off. The stagnation test alone cannot catch the last case,
+    because the numbers do keep falling.
 
-    At the HEAD, a method is not yet converging at its asymptotic rate.  In
-    Kepler's pathological corner f'(E) = 1 - e cos E is nearly zero, so the
-    first step routinely overshoots and the error goes UP before it comes
-    down.  An earlier version of this function stopped at the first
-    non-decrease, which threw away the entire asymptotic tail whenever that
-    happened - Newton measured a clean 2.0000 at e = 0.3 and "unmeasurable"
-    at e = 0.9, purely as an artefact.
+    At the START: the method has not settled into its true rate yet. In
+    Kepler's hard corner f'(E) = 1 - e cos E is almost zero, so the first
+    step often overshoots and the error goes UP before it comes down. An
+    earlier version stopped at the first increase, which threw away the
+    whole useful tail whenever that happened: Newton measured a clean 2.0000
+    at e = 0.3 and "unmeasurable" at e = 0.9, purely as an artefact.
 
-    So: drop everything from the floor onwards, then keep the longest
-    strictly-decreasing run that ENDS at the last surviving term.  That run is
-    the asymptotic regime, which is the only part an order estimate describes.
+    So: cut everything from the floor onwards, then keep the longest run of
+    steadily-shrinking errors that ENDS at the last surviving term. That run
+    is the only part an order estimate describes.
     """
     kept: list[float] = []
     for value in magnitudes:
@@ -293,14 +285,14 @@ def order_from_history_detail(
     use_reference: bool = True,
     floor=None,
 ) -> OrderEstimate:
-    """Measure the order for one solve and report how reliable it is.
+    """Measure the order for one solve, and say how much to trust it.
 
-    Prefers true errors against the reference root when they are available
-    (COC), and falls back to step magnitudes (ACOC) otherwise.
+    Uses the true errors against the reference root when they are there,
+    and falls back to the gaps between iterates when they are not.
 
-    ``floor`` is the smallest magnitude still worth believing; pass it when
-    you know the reference root's accuracy, otherwise it is inferred from the
-    working precision - see :func:`_working_floor`.
+    ``floor`` is the smallest error still worth believing. Pass it if you
+    know how accurate the reference root is; otherwise it is worked out
+    from the precision in use - see :func:`_working_floor`.
     """
     n_total = len(history)
 
@@ -310,7 +302,7 @@ def order_from_history_detail(
     if use_reference and have_errors:
         source = "error"
         magnitudes = [abs(record.error) for record in history]
-        # Each magnitude belongs to the iterate on the same row.
+        # Each error belongs to the iterate on the same row.
         aligned_iterates = [record.E for record in history]
     else:
         source = "step"
@@ -322,12 +314,12 @@ def order_from_history_detail(
             )
         magnitudes = [abs(iterates[i] - iterates[i - 1])
                       for i in range(1, len(iterates))]
-        # Step n is |x_n - x_{n-1}|, so it belongs to x_n.
+        # Gap n is |x_n - x_{n-1}|, so it belongs to x_n.
         aligned_iterates = iterates[1:]
 
     if floor is None:
-        # Scale the floor by the root itself: the errors are absolute, so the
-        # meaningful limit is relative to where the root sits.
+        # Scale the floor to the root. The errors are absolute, so what
+        # counts as "too small to believe" depends on how big the root is.
         scale = _reference_scale(aligned_iterates, magnitudes)
         floor = _working_floor(scale, like=magnitudes[0] if magnitudes else None)
 
@@ -358,17 +350,17 @@ def order_from_history(
     use_reference: bool = True,
     floor=None,
 ) -> float:
-    """Single best order estimate for one solve, or nan if unmeasurable.
+    """One order estimate for one solve, or nan if it cannot be measured.
 
-    Thin wrapper over :func:`order_from_history_detail`; use that one when
-    you need to know *why* an estimate is missing.
+    A thin wrapper around :func:`order_from_history_detail`. Use that one
+    when you need to know WHY an estimate is missing.
 
-    IMPORTANT: for a method of order ~10 starting from a good guess, you can
-    hit machine precision in 2 iterations, leaving no usable triple at all.
-    That is why verification (experiments/verification.py) runs in extended
-    precision.  On the double-precision Kepler grid, expect the measured
-    order for the high-order methods to be unreliable, and SAY SO in the
-    report instead of reporting a noisy number.
+    IMPORTANT: an order-10 method from a decent starting guess reaches
+    machine precision in two steps, which leaves too few points to measure
+    anything. That is why verification runs at high precision. On the
+    ordinary double-precision grid the measured order for the fast methods
+    is unreliable, and the report should SAY SO rather than quote a noisy
+    number.
     """
     return order_from_history_detail(
         history, use_reference=use_reference, floor=floor

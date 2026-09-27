@@ -1,18 +1,18 @@
 """Convergence figures. Owner: Suchi.
 
-These draw, they never compute.  Every function takes a DataFrame that
-``evaluation/`` or ``experiments/`` produced and turns it into a figure, so
-any figure in the report can be traced back to a result file.
+These functions only draw. They never work anything out. Each one takes a
+table that ``evaluation/`` or ``experiments/`` already produced and turns it
+into a figure, so every figure in the report can be traced back to a file.
 
-Expected columns
-----------------
-``history_df``  one row per (solve, iteration), as written by
+What the tables must contain
+----------------------------
+``history_df``  one row per iteration of each solve, as written by
                 ``io.results_io.save_history``:
                 solver, guess, e, M, iteration, residual  (+ error, step)
 
-``order_df``    one row per (solver, measurement), as produced by
+``order_df``    one row per measurement, from
                 ``experiments.verification.verify_order_on_test_functions``
-                or by an order table over the (e, M) grid:
+                or from an order table over the (e, M) grid:
                 solver, measured_order, claimed_order  (+ function, e,
                 n_usable)
 """
@@ -34,20 +34,21 @@ __all__ = [
     "plot_order_vs_eccentricity",
 ]
 
-#: Below this many usable terms the order estimator had no asymptotic window
-#: and its output is not a measurement.  Such bars/markers are drawn hatched
-#: or hollow rather than omitted - a missing bar reads as "no data", which is
-#: a different and wronger claim than "measured, but unreliable".
+#: With fewer usable terms than this, the estimator never saw the method
+#: settle into its true rate, so its answer is not really a measurement.
+#: Those bars and markers are drawn hatched or hollow rather than left out.
+#: A missing bar says "no data", which is a different and more misleading
+#: claim than "measured, but do not trust it".
 MIN_USABLE_TERMS = 3
 
-#: Relative size of one double-precision ulp, used to place the noise floor.
+#: How small a gap a double can represent. Used to place the noise floor.
 DOUBLE_EPS = 2.220446049250313e-16
 
 
 def _require(df: pd.DataFrame, columns: list[str], who: str) -> None:
-    """Fail loudly on a missing column.
+    """Stop with a clear error if a column is missing.
 
-    A silently empty figure in the report is worse than a crash here.
+    A blank figure that reaches the report is worse than a crash here.
     """
     missing = [c for c in columns if c not in df.columns]
     if missing:
@@ -68,17 +69,16 @@ def _guess_style(name: str) -> str:
 # 1. Residual histories
 # ----------------------------------------------------------------------
 def plot_residual_history(history_df, e: float, M: float, ax=None, atol=1e-12):
-    """log10|f(E_n)| vs iteration, one line per solver, at one (e, M).
+    """Residual against iteration number, one line per solver, at one (e, M).
 
-    The horizontal band marks the double-precision noise floor: ``f(E)`` is
-    evaluated as ``E - e sin E - M``, so its own rounding error is about
-    ``eps * max(|E|, |M|)``.  Below that line a curve is measuring
-    floating-point noise, not convergence, and the report must not read
-    anything into how far it drops.
+    The shaded band is the noise floor. We compute f(E) as E - e sin E - M,
+    so its own rounding error is roughly eps * max(|E|, |M|). Below that
+    line a curve is showing rounding noise, not convergence, and the report
+    should read nothing into how far it drops.
 
-    Residuals of exactly zero cannot be drawn on a log axis; they are plotted
-    at the floor with a hollow marker and counted in the legend, because
-    "hit zero" is a real and different outcome from "stalled".
+    A residual of exactly zero cannot go on a log axis. Those are drawn at
+    the floor with a hollow marker and named in the legend, because landing
+    exactly on the root is a real outcome and a different one from stalling.
     """
     _require(history_df, ["solver", "e", "M", "iteration", "residual"],
              "plot_residual_history")
@@ -106,7 +106,7 @@ def plot_residual_history(history_df, e: float, M: float, ax=None, atol=1e-12):
                              abs(float(M)), 1.0)
 
     for key, group in selection.groupby(keys, sort=True):
-        # groupby on a one-element list yields a 1-tuple key, not a scalar.
+        # groupby on a one-item list gives back a 1-tuple, not a plain value.
         key = key if isinstance(key, tuple) else (key,)
         solver = key[0]
         guess = key[1] if len(key) > 1 else None
@@ -145,13 +145,12 @@ def plot_residual_history(history_df, e: float, M: float, ax=None, atol=1e-12):
 
 
 def plot_residual_history_pair(history_df, typical, hard):
-    """Two residual histories side by side: a typical (e, M) and a hard one.
+    """Two residual histories side by side: an ordinary case and a hard one.
 
-    The story genuinely differs between the two regimes - in the ordinary
-    operating range the high-order methods reach the floor in two or three
-    steps, while in the pathological corner (e -> 1, M -> 0) they can take
-    many more, or fail outright.  Showing only one panel would let the report
-    imply whichever conclusion the author picked.
+    The two really do behave differently. In the ordinary range the fast
+    methods reach the floor in two or three steps; in the hard corner
+    (e near 1, M near 0) they can take many more, or fail outright. Showing
+    only one panel would let the report imply whichever answer suited it.
 
     ``typical`` and ``hard`` are each an (e, M) pair.
     """
@@ -168,17 +167,17 @@ def plot_residual_history_pair(history_df, typical, hard):
 # 2. Measured order against the paper's claim
 # ----------------------------------------------------------------------
 def plot_measured_vs_claimed_order(order_df, ax=None):
-    """Bar chart: measured empirical order next to the paper's claim.
+    """Bar chart of the measured order beside the order the paper claims.
 
-    One pair of bars per solver.  The error bar on the measured bar is the
-    spread across test points - a claimed order reproduced to within noise on
-    every function is a much stronger result than one averaged out of a wide
-    scatter, and the report should be able to tell them apart at a glance.
+    One pair of bars per solver. The error bar shows the spread across the
+    test functions, which matters: a claim reproduced closely on every
+    function is far stronger evidence than the same average pulled out of a
+    wide scatter, and a reader should be able to tell those apart at a
+    glance.
 
-    Where the measurement was unreliable - fewer than
-    ``MIN_USABLE_TERMS`` usable errors before the precision floor, so the
-    estimator never saw the asymptotic regime - the bar is drawn hatched and
-    annotated rather than omitted.
+    Where the measurement could not be trusted - fewer than
+    ``MIN_USABLE_TERMS`` usable errors, so the estimator never saw the true
+    rate - the bar is hatched and labelled rather than left out.
     """
     _require(order_df, ["solver", "measured_order", "claimed_order"],
              "plot_measured_vs_claimed_order")
@@ -205,9 +204,9 @@ def plot_measured_vs_claimed_order(order_df, ax=None):
             "n": len(measured),
         })
 
-    # Order by claimed order, not alphabetically: "newton, nwm9, nwm11" is
-    # the progression the report argues about, and it matches the proposal's
-    # method table. Alphabetical puts nwm11 before nwm9 and reads as noise.
+    # Sort by claimed order rather than by name. "newton, nwm9, nwm11" is
+    # the progression the report argues about, and it matches the method
+    # table. Sorting by name would put nwm11 before nwm9, which reads oddly.
     summary = (pd.DataFrame(rows)
                .sort_values("claimed", na_position="last")
                .reset_index(drop=True))
@@ -244,9 +243,9 @@ def plot_measured_vs_claimed_order(order_df, ax=None):
             ax.annotate("unreliable", (positions[i] - width / 2,
                                        row["measured"] + row["spread"]),
                         ha="center", va="bottom", fontsize=7.5, color="0.3")
-        # At this scale a 0.02 gap between measured and claimed is invisible,
-        # and "invisible" is the whole result - so print both numbers. A
-        # reader must be able to tell "agrees to 3 digits" from "close-ish".
+        # At this scale a gap of 0.02 between the two bars is invisible - and
+        # that invisibility IS the result. So print both numbers, or a reader
+        # cannot tell "agrees to 3 digits" from "roughly the same".
         ax.annotate(f"{row['measured']:.3f}",
                     (positions[i] - width / 2, row["measured"] + row["spread"]),
                     ha="center", va="bottom", fontsize=8, fontweight="bold",
@@ -262,7 +261,7 @@ def plot_measured_vs_claimed_order(order_df, ax=None):
     ax.set_xticklabels(summary["solver"])
     ax.set_ylabel("convergence order $p$")
     ax.set_xlabel("")
-    # Headroom for the value labels, which otherwise clip on the tallest bar.
+    # Leave room at the top, or the label on the tallest bar gets cut off.
     tallest = np.nanmax(
         np.concatenate([summary["measured"].to_numpy(dtype=float),
                         summary["claimed"].to_numpy(dtype=float)])
@@ -279,21 +278,20 @@ def plot_measured_vs_claimed_order(order_df, ax=None):
 # 3. Order across the eccentricity range
 # ----------------------------------------------------------------------
 def plot_order_vs_eccentricity(order_df, ax=None, log_1me=False):
-    """Measured order as a function of e.
+    """Measured order plotted against eccentricity.
 
-    One of the project's central questions: a method's order is proved in the
-    limit for a well-behaved f, but Kepler's equation stiffens as e -> 1
-    (f'(E) = 1 - e cos E collapses towards zero near M = 0).  Whether the
-    high-order methods hold their claimed order across the whole operating
-    range, or quietly decay towards the pathological corner, is exactly what
-    this figure is for.
+    This answers one of the project's main questions. An order is proved in
+    the limit, for a well-behaved function. Kepler's equation gets much
+    harder as e approaches 1, because f'(E) = 1 - e cos E falls towards zero
+    near M = 0. Do the fast methods keep their claimed order across the whole
+    range, or quietly fall apart in the corner? That is what this shows.
 
-    Each solver's claimed order is drawn as a faint horizontal reference so
-    the gap is readable without cross-checking a table.  Points the estimator
-    could not resolve are drawn hollow.
+    Each solver's claimed order is drawn as a faint horizontal line, so the
+    gap is visible without looking up a table. Points the estimator could
+    not resolve are drawn hollow.
 
-    Set ``log_1me=True`` to spread the crowded high-eccentricity end out on a
-    log axis in (1 - e), which is where the interesting behaviour lives.
+    Set ``log_1me=True`` to spread out the crowded high-eccentricity end on
+    a log axis in (1 - e), which is where the interesting behaviour is.
     """
     _require(order_df, ["solver", "e", "measured_order"],
              "plot_order_vs_eccentricity")
@@ -310,16 +308,16 @@ def plot_order_vs_eccentricity(order_df, ax=None, log_1me=False):
 
         if "n_usable" in group.columns:
             usable = pd.to_numeric(group["n_usable"], errors="coerce").fillna(0)
-            # .to_numpy() can hand back a read-only view of the frame.
+            # .to_numpy() can return a read-only view of the table.
             reliable = np.array((usable >= MIN_USABLE_TERMS).to_numpy(), dtype=bool)
         else:
             reliable = np.isfinite(order)
         reliable = reliable & np.isfinite(order)
 
         color = _solver_color(solver)
-        # Connect only the points the estimator could actually resolve. A line
-        # drawn through unreliable points asserts a trend the data does not
-        # support; hollow markers say "measured here, do not trust it".
+        # Join up only the points the estimator could actually resolve. A
+        # line through unreliable points claims a trend the data does not
+        # support. Hollow markers say "measured here, but do not trust it".
         line_x = np.where(reliable, x, np.nan)
         ax.plot(line_x, np.where(reliable, order, np.nan), color=color,
                 linewidth=1.5, label=str(solver), alpha=0.9)
@@ -342,9 +340,9 @@ def plot_order_vs_eccentricity(order_df, ax=None, log_1me=False):
     else:
         ax.set_xlabel("eccentricity $e$")
 
-    # A single unreliable estimate can be an order of magnitude out and would
-    # flatten every real curve into the axis. Scale to the claims plus the
-    # measurements worth believing, and let outliers run off the top.
+    # One bad estimate can be ten times too large and would squash every
+    # real curve flat against the axis. Scale to the claimed orders and the
+    # measurements worth believing, and let any outliers run off the top.
     reference = pd.to_numeric(order_df.get("claimed_order"), errors="coerce")
     believable = pd.to_numeric(order_df["measured_order"], errors="coerce")
     if "n_usable" in order_df.columns:

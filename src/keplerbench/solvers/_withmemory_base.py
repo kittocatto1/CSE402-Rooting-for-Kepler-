@@ -1,37 +1,28 @@
-"""Shared plumbing for the 2024-2025 with-memory schemes.
+"""Shared code for the NWM9 and NWM11 with-memory solvers.
 
-What "with memory" means here
------------------------------
-A normal (memoryless) method throws away everything it computed in iteration
-n before starting iteration n+1.  A with-memory method keeps those values and
-uses them to estimate one or more *self-accelerating parameters* by Hermite
-interpolation.  Better parameters make the error constant smaller, which
-raises the convergence order ABOVE the memoryless base method - and it costs
-nothing extra, because the interpolation only reuses numbers already paid for.
+What "with memory" means
+------------------------
+A normal method forgets everything it computed once an iteration ends.  A
+with-memory method keeps those numbers and reuses them to tune itself.  It
+fits a polynomial through points it has already evaluated and reads
+derivatives off that polynomial, so the tuning costs no new function calls.
+Better tuning means a higher convergence order for free.
 
-That is the whole reason these methods are interesting for Kepler: extra
-order without extra transcendental calls.  Whether that actually wins once
-Kepler's sincos structure is costed is the question the project asks.
-
-Why the interpolation needs derivative values
----------------------------------------------
-The published parameter formulas interpolate over *repeated* nodes.  For the
-bi-parametric scheme the nodes are
+Why the ``ds`` argument exists
+------------------------------
+Both papers fit their polynomials through node lists where a node appears
+twice, for example
 
     H5 over [s_k, s_k, t_{k-1}, v_{k-1}, s_{k-1}, s_{k-1}]
-    H6 over [v_k, s_k, s_k, t_{k-1}, v_{k-1}, s_{k-1}, s_{k-1}]
-    H7 over [t_k, v_k, s_k, s_k, t_{k-1}, v_{k-1}, s_{k-1}, s_{k-1}]
 
-A repeated node x forces the divided-difference table to use f'(x) where it
-would otherwise divide by (x - x) = 0.  That is why the functions below take
-an optional ``ds`` argument: a plain Newton table cannot express these
-polynomials at all.  With ``ds=None`` and distinct nodes they reduce exactly
-to the ordinary Newton divided differences.
+A repeated node would make the divided-difference table divide by
+(x - x) = 0.  The fix is to use f'(x) there instead, so these functions take
+the derivatives in ``ds``.  With ``ds=None`` and no repeats they behave like
+ordinary Newton divided differences.
 
-Everything here is arithmetic-agnostic - floats in, floats out; mpmath.mpf
-in, mpmath.mpf out - because these tables become badly conditioned as the
-nodes collapse onto the root, and the verification step runs them at high
-precision for exactly that reason.
+The arithmetic here works with both floats and mpmath numbers.  That matters
+because the tables get very ill-conditioned as the nodes crowd together near
+the root, so verification runs them at high precision.
 
 Owner: Suchi.
 """
@@ -51,27 +42,26 @@ __all__ = [
 
 @dataclass
 class MemoryState:
-    """Values carried from one iteration to the next.
+    """What one iteration hands to the next.
 
-    The three "prev" lists are parallel and describe the *previous* full
-    iteration: for the AIMS schemes they hold (s_{k-1}, v_{k-1}, t_{k-1}) and
-    the function values there, plus f'(s_{k-1}) where it is known.
+    The three "prev" lists line up with each other and hold the previous
+    iteration's nodes: (s, v, t), the value of f at each, and f' where known.
     """
 
-    #: Iterates from the previous iteration (x_{n-1} and its sub-steps).
+    #: The previous iteration's nodes.
     prev_points: list[float] = field(default_factory=list)
-    #: Function values at ``prev_points``, in the same order.
+    #: f at each of those nodes, same order.
     prev_values: list[float] = field(default_factory=list)
-    #: Derivative values at ``prev_points``, None where unknown.  Needed
-    #: because the Hermite polynomials repeat s_{k-1} as a double node.
+    #: f' at those nodes, None where we do not have it. Needed because the
+    #: polynomials use s twice.
     prev_derivatives: list[float | None] = field(default_factory=list)
-    #: Self-accelerating parameters. NWM9/NWM10 have one, NWM11 has two.
+    #: The tuning parameters: NWM9 has one, NWM11 has two.
     params: dict[str, float] = field(default_factory=dict)
-    #: True until the first full iteration has run - see note below.
+    #: True until one full iteration has run.
     first_iteration: bool = True
 
     def has_memory(self) -> bool:
-        """Whether enough history exists to compute the parameters."""
+        """True once there is enough history to compute the parameters."""
         return not self.first_iteration and len(self.prev_points) > 0
 
     def record_iteration(
@@ -80,10 +70,10 @@ class MemoryState:
         values: Sequence[float],
         derivatives: Sequence[float | None] | None = None,
     ) -> None:
-        """Overwrite the stored history with this iteration's nodes.
+        """Save this iteration's nodes, replacing the previous ones.
 
-        Only one iteration of history is kept, which is all the published
-        parameter formulas use.  Call this at the END of ``step``.
+        Only one iteration is kept - that is all the formulas need. Call this
+        at the end of ``step``.
         """
         if len(points) != len(values):
             raise ValueError("points and values must be the same length")
@@ -102,10 +92,10 @@ class MemoryState:
 # Interpolation machinery
 # ----------------------------------------------------------------------
 def _check_repeats_are_grouped(xs: Sequence[float]) -> None:
-    """Confluent divided differences require equal nodes to be adjacent.
+    """Equal nodes must sit next to each other.
 
-    [a, a, b] is fine; [a, b, a] is not, and would silently produce a
-    different (wrong) polynomial rather than an error.
+    [a, a, b] is fine. [a, b, a] is not: it would quietly build a different
+    polynomial instead of failing.
     """
     for i in range(len(xs)):
         for k in range(i + 2, len(xs)):
@@ -121,23 +111,20 @@ def newton_divided_differences(
     fs: Sequence[float],
     ds: Sequence[float | None] | None = None,
 ) -> list[float]:
-    """Divided-difference table for Newton's interpolating polynomial.
+    """Build the divided-difference table for a Newton polynomial.
 
     Returns the leading coefficients f[x0], f[x0,x1], f[x0,x1,x2], ...
-
-    Both papers build their self-accelerating parameters out of exactly this,
-    so it is factored out here and unit-tested once.
+    Both papers build their tuning parameters from these, so it lives here
+    and is tested once.
 
     Repeated nodes
     --------------
-    When ``xs[i] == xs[i+1]`` the ordinary quotient would be 0/0; the
-    confluent form uses the derivative instead, f[x, x] = f'(x).  Supply it
-    through ``ds`` (a list parallel to ``xs``; entries for non-repeated nodes
-    may be None).  Equal nodes must be adjacent.
+    If ``xs[i] == xs[i+1]`` the usual quotient is 0/0. Use the derivative
+    instead: f[x, x] = f'(x). Pass it in ``ds``, a list the same length as
+    ``xs`` with None wherever it is not needed. Equal nodes must be adjacent.
 
-    Only multiplicity 2 is supported, because only first derivatives are
-    available - a node repeated three times would need f''.  That case raises
-    rather than returning a quietly wrong table.
+    A node may repeat at most twice, because we only have first derivatives.
+    Three would need f''. That case raises instead of returning a wrong table.
     """
     m = len(xs)
     if len(fs) != m:
@@ -184,21 +171,19 @@ def hermite_derivative_estimate(
     at: float,
     ds: Sequence[float | None] | None = None,
 ) -> float:
-    """Estimate the ``order``-th derivative of f at ``at`` by Hermite/Newton
-    interpolation through the already-computed points.
+    """Estimate the ``order``-th derivative of f at ``at``.
 
-    This is the machinery that lets the with-memory schemes get derivative
-    information WITHOUT a fresh transcendental call.  Every call to this
-    function should be recorded by the caller as a *synthesised* derivative
-    (``problem.cost.synthesised_derivatives += 1``), because Section 4.1 of
-    the proposal explicitly asks us to distinguish those from real ones.
+    Fits a polynomial through points we have already evaluated and reads the
+    derivative off it. This is how the solvers get derivatives without paying
+    for a new sin or cos call. The caller should count each one with
+    ``problem.cost.synthesised_derivatives += 1``, so the cost table can tell
+    interpolated derivatives apart from real ones.
 
-    Returns the TRUE derivative H^(order)(at), not the Newton coefficient and
-    not H^(order)(at) / order!.  The published formulas use H5''(s_k),
-    H6'''(v_k) and H7''''(t_k) as genuine derivatives, so getting this
-    convention wrong is a silent factor-of-order! error in the parameters.
+    Returns the actual derivative, NOT the Newton coefficient and NOT the
+    derivative divided by order!. The papers treat these as real derivatives,
+    so the wrong convention here is a silent factor-of-order! error.
 
-    ``at`` need not be one of the nodes.
+    ``at`` does not have to be one of the nodes.
     """
     if order < 0:
         raise ValueError(f"order must be >= 0, got {order}")
@@ -207,16 +192,15 @@ def hermite_derivative_estimate(
     if not coefficients:
         raise ValueError("need at least one node to interpolate")
 
-    # Newton form:  H(s) = sum_j c_j * P_j(s),  P_j(s) = prod_{i<j} (s - x_i).
-    #
-    # Differentiate by carrying the derivatives of the running product rather
-    # than expanding powers: with P_{j+1} = P_j * (s - x_j), Leibniz gives
+    # The polynomial is H(s) = sum_j c_j * P_j(s) with P_j(s) the product of
+    # (s - x_i) for i < j. Rather than expand the powers, carry the running
+    # product and its derivatives together. Since P_{j+1} = P_j * (s - x_j),
+    # the product rule gives
     #     P_{j+1}^(t) = P_j^(t) * (at - x_j) + t * P_j^(t-1).
-    # This is exact for polynomials, needs no powers of possibly-tiny node
-    # differences, and costs O(m * order).
+    # Exact for polynomials, and it never forms powers of tiny node gaps.
     #
-    # Integer literals keep the accumulator arithmetic-agnostic: int * mpf is
-    # an mpf, int * float is a float.
+    # The 1 and 0 below are plain ints on purpose: int times mpf is an mpf,
+    # int times float is a float, so this works for both.
     derivs: list[Any] = [1 if t == 0 else 0 for t in range(order + 1)]
     total = coefficients[0] * derivs[order]
 
@@ -235,13 +219,13 @@ def hermite_derivative_estimate(
 
 
 class WithMemoryMixin:
-    """Small helpers shared by the with-memory solvers."""
+    """Helpers shared by NWM9 and NWM11."""
 
     def _fresh_state(self) -> dict[str, Any]:
-        """Initial per-solve state dict wrapping a :class:`MemoryState`."""
+        """Fresh state for one solve, holding an empty MemoryState."""
         return {"memory": MemoryState()}
 
     @staticmethod
     def _note_synthesised(problem, count: int = 1) -> None:
-        """Tell the cost counter a derivative was interpolated, not evaluated."""
+        """Record that a derivative came from interpolation, not evaluation."""
         problem.cost.synthesised_derivatives += count

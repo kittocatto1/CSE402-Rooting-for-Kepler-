@@ -1,4 +1,4 @@
-"""NWM11 - bi-parametric with-memory scheme, the project's primary "new" method.
+"""NWM11 - the project's main "new" method, with two memory parameters.
 
 Reference
 ---------
@@ -6,27 +6,25 @@ S. K. Mittal, S. Panday, L. Jantschi and L. C. Bolundut, "Two novel efficient
 memory-based multi-point iterative methods for solving nonlinear equations",
 AIMS Mathematics 10(3), 5421-5443, 2025.  doi:10.3934/math.2025250
 
-Claimed order: 10.7446, from TWO self-accelerating parameters placed in the
-first and third steps of the optimal eighth-order without-memory method of
-Solaiman & Hashim.  Efficiency index 1.6818 -> 1.8105.
+The paper takes the 8th-order method of Solaiman & Hashim and adds two tuning
+parameters, one in the first step and one in the third. Claimed order
+10.7446, efficiency index 1.6818 -> 1.8105.
 
-The same paper defines NWM10 (one parameter, R-order 10) as the uni-parametric
-sibling.  Note for the report: the proposal calls NWM9 the "controlled,
-lower-order sibling" of NWM11, but NWM9 is a different construction from a
-different paper (Mathematics 12(22), 3490).  NWM10 is the true same-base
-control.  Worth stating explicitly rather than letting the table imply
-otherwise.
+The same paper also defines NWM10, which uses one parameter instead of two.
+Worth saying plainly in the report: the proposal calls NWM9 the lower-order
+sibling of NWM11, but NWM9 is from a different paper with a different base
+method. NWM10 is the real matched control.
 
-Per the proposal's method table this uses 3 evaluation points but only ONE
-full (sin, cos) pair per iteration - which, if true, is precisely the reason
-it might beat Danby on Kepler despite doing more work on paper.  Confirmed
-with the cost counters; see tests.
+The interesting claim is the cost: 3 evaluation points, but only ONE sincos
+pair per iteration. If that holds, it is the reason NWM11 might beat Danby on
+Kepler despite doing more work on paper. The cost counters confirm it - see
+the tests.
 
-Cost per iteration (Section 4.1 accounting):
-  * distinct evaluation points : 3   (s_k, v_k, t_k)
-  * full (sin, cos) pairs      : 1   (at s_k, for f and f' together)
-  * sin-only                   : 2   (at v_k and t_k)
-  * synthesised derivatives    : 3   (H5'', H6''', H7'''' - memory steps only)
+Cost per iteration:
+  * evaluation points   : 3   (s, v, t)
+  * (sin, cos) pairs    : 1   (at s, giving f and f' together)
+  * sin only            : 2   (at v and t)
+  * interpolated derivs : 3   (only once memory exists)
 
 Owner: Suchi.
 """
@@ -43,14 +41,17 @@ from keplerbench.solvers._withmemory_base import (
     hermite_derivative_estimate,
 )
 
-#: Paper's initial parameter values, Section 3.
+#: Starting values for the two parameters, taken from the paper. Used only on
+#: the first iteration, before any history exists.
 ALPHA_0 = 0.01
 BETA_0 = 0.00001
 
 
 @register_solver("nwm11")
 class NWM11Solver(WithMemoryMixin, IterativeSolver):
-    """Multipoint scheme with two accelerating parameters, Eq. (2.33).
+    """Three steps per iteration, with a tuning parameter in two of them.
+
+    The paper's Eq. (2.33):
 
         v_k     = s_k - f(s_k) / (f'(s_k) + alpha_k f(s_k))
 
@@ -59,7 +60,8 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
 
         s_{k+1} = t_k - f(t_k) / (w' + beta_k f(t_k))
 
-    with the auxiliary approximations of the base method
+    where q, R and w' are the base method's cheap stand-ins for derivatives
+    it never actually evaluates:
 
         q  ~ f'(v_k)     = 2 f[v_k, s_k] - f'(s_k)
         R  ~ f''(v_k)    = 2 (f'(s_k) - f[v_k, s_k]) / (s_k - v_k)
@@ -67,10 +69,11 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
                            - (s_k-t_k)^2 / ((s_k-v_k)(v_k-t_k)) f[v_k,s_k]
                            + f'(s_k) (v_k-t_k)/(s_k-v_k)
 
-    The ``w'`` grouping and the two-form definition of ``R`` are ambiguous in
-    the PDF's text layer, so both were pinned against the paper's own error
-    expressions (2.4)-(2.6) rather than read off by eye - see
-    tests/test_solvers_withmemory.py.
+    The bracketing in ``w'``, and which of the two printed forms of ``R`` to
+    use, are both ambiguous in the PDF. Reading them off by eye is unsafe:
+    several wrong groupings still converge at order 8. Both were instead
+    pinned against the paper's own error expressions, Eqs (2.4)-(2.6). Those
+    checks live in tests/test_solvers_withmemory.py.
     """
 
     theoretical_order = 10.7446
@@ -85,10 +88,11 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
 
     # ------------------------------------------------------------------
     def _hermite_nodes(self, memory, s, v, t, fs, fv, ft, fps):
-        """The three node lists of Eqs (2.9) and (2.34), with their values.
+        """The three node lists from Eqs (2.9) and (2.34), with their values.
 
-        s_k and s_{k-1} appear twice in every one of them, which is what
-        makes these Hermite rather than plain Newton interpolants.
+        s appears twice in each list, both for this iteration and the last.
+        That is what makes these Hermite rather than plain Newton fits, and
+        why the derivative lists are needed.
         """
         s_p, v_p, t_p = memory.prev_points
         fs_p, fv_p, ft_p = memory.prev_values
@@ -108,8 +112,8 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
     def _alpha(self, memory, s, fs, fps, problem):
         """alpha_k = -H5''(s_k) / (2 f'(s_k)),  Eq. (2.8).
 
-        Computed at the TOP of the iteration: H5 needs only s_k and the
-        previous iteration's nodes, all of which are already in hand.
+        Done at the start of the iteration, because H5 only needs s and the
+        previous iteration's nodes - all of which we already have.
         """
         if not memory.has_memory() or memory.prev_derivatives[0] is None:
             return memory.params.get("alpha", ALPHA_0), None
@@ -139,8 +143,8 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
         """beta_k = H7''''(t_k) / (4 H6'''(v_k)) - H5''(s_k)/(2 f'(s_k)),
         Eq. (2.34).
 
-        The trailing term is exactly alpha_k, so it is reused rather than
-        recomputed - one interpolation saved per iteration.
+        The last term is exactly alpha_k, so it is passed in and reused
+        instead of being computed twice.
         """
         if not memory.has_memory() or alpha_term is None:
             return memory.params.get("beta", BETA_0)
@@ -165,14 +169,14 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
         memory = state["memory"]
         s = E
 
-        # One sincos pair buys f and f' at s_k.
+        # One sincos call gives both f and f' at s.
         fs, fps = problem.f_fprime(s)
         if fs == 0:
             return s
 
         alpha, alpha_term = self._alpha(memory, s, fs, fps, problem)
 
-        # Step 1 - accelerated Newton.
+        # Step 1: a Newton step, tuned by alpha.
         denominator = fps + alpha * fs
         if denominator == 0:
             raise ZeroDivisionError("f'(s) + alpha f(s) = 0 in the first sub-step")
@@ -180,7 +184,7 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
         if v == s:
             return v
 
-        # Step 2 - the order-8 core. f only at v_k, so sin alone.
+        # Step 2: the order-8 core. Needs f at v only, so sin alone.
         fv = problem.f(v)
         divided_vs = (fv - fs) / (v - s)
         q = 2 * divided_vs - fps
@@ -194,7 +198,7 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
         if t == v or t == s:
             return t
 
-        # Step 3 - accelerated finish. f only at t_k.
+        # Step 3: the finish, tuned by beta. f at t only.
         ft = problem.f(t)
         beta = self._beta(memory, s, v, t, fs, fv, ft, fps, alpha_term, problem)
 
@@ -220,5 +224,6 @@ class NWM11Solver(WithMemoryMixin, IterativeSolver):
 
 
 def _finite(x) -> bool:
-    """True when x is neither nan nor infinite, for float or mpf alike."""
+    """True if x is a real number - not nan, not infinite. Works for floats
+    and for mpmath numbers."""
     return x == x and x not in (float("inf"), float("-inf"))

@@ -1,9 +1,9 @@
-"""Work Plan step 2 - verify each implementation before trusting it.
+"""Work Plan step 2 - check every solver before trusting it.
 
-The rule for this project: a solver does not enter the grid benchmark until
-its MEASURED convergence order matches what its source paper claims, on the
-paper's OWN test functions.  This is what stops a transcription bug from
-being reported as "the with-memory method underperforms".
+The rule: a solver does not go into the grid benchmark until its measured
+convergence order matches what its own paper claims, on that paper's own
+test functions. This is what stops a typing mistake in a formula from being
+written up as "the new method is slow".
 
 Owner: Suchi.
 """
@@ -36,6 +36,8 @@ __all__ = [
     "measure_order_on_kepler",
     "GenericProblem",
     "PAPER_TEST_FUNCTIONS",
+    "NWM9_TEST_FUNCTIONS",
+    "SOLVER_TEST_FUNCTIONS",
     "VERIFICATION_DPS",
     "refine_root",
     "verify_order_on_test_functions",
@@ -43,15 +45,14 @@ __all__ = [
     "run",
 ]
 
-#: Working precision for the order measurement.  Mirrors
+#: How many decimal digits to work in. Matches
 #: extra.working_precision_dps in configs/verification.yaml.
 #:
-#: This has to be far larger than feels reasonable, and the reason is worth
-#: stating.  An order-p method squares-and-then-some each step: from an error
-#: of 1e-1 an order-9 method passes 1e-9, 1e-81, 1e-729...  The estimator
-#: needs three consecutive usable errors for ONE estimate, so the working
-#: precision must outrun p**3 digits or the sequence hits the floor before a
-#: single triple exists.
+#: This looks absurdly high, and the reason is worth knowing. An order-p
+#: method multiplies its correct digits by p each step: starting at 1e-1, an
+#: order-9 method passes 1e-9, then 1e-81, then 1e-729. The estimator needs
+#: three usable errors in a row to produce ONE number, so the precision has
+#: to outrun p**3 digits or the sequence runs out before that happens.
 #:
 #: Measured on NWM9 (claimed 8.8989) over the paper's eight test functions:
 #:
@@ -80,9 +81,8 @@ VERIFICATION_DPS = 2000
 #: refinement that walks away from it.
 #:
 #: NOTE: the functions are written with mpmath primitives so they evaluate at
-#: whatever precision the active context is using.  NWM9 comes from a
-#: different paper (Mathematics 12(22), 3490) with its own test set; add it
-#: as a separate list rather than mixing the two.
+#: whatever precision the active context is using.  NWM9 has its own set,
+#: below, because it comes from a different paper.
 PAPER_TEST_FUNCTIONS: list[tuple[str, Callable[[Any], Any], float, float]] = [
     ("phi1", lambda s: s**10 + 4 * s**5 - 15 * s**2 + 2, 1.24903, 1.2),
     ("phi2", lambda s: mp.cos(s) ** 2 - mp.sin(s) + s, -1.09775, -0.9),
@@ -94,29 +94,76 @@ PAPER_TEST_FUNCTIONS: list[tuple[str, Callable[[Any], Any], float, float]] = [
     ("phi8", lambda s: mp.e ** (s**2) + mp.sin(s) - mp.cos(s) - 1, 0.54177, 0.4),
 ]
 
+#: NWM9's own test set: the numerical examples of Mittal, Panday & Jantschi,
+#: Mathematics 12(22), 3490, 2024 (doi:10.3390/math12223490), Section 3.
+#:
+#: Kept separate from PAPER_TEST_FUNCTIONS above rather than merged, because
+#: "validated against its source paper's reported order on the paper's OWN
+#: test set" is the project's rule, and the two papers do not share a set.
+#: Measuring NWM9 on NWM11's functions is still evidence - order is a
+#: property of the method, not of the function - but it does not reproduce
+#: the table the paper actually published.
+#:
+#: SIX of these eight needed their superscripts reconstructed: the PDF prints
+#: them on the line ABOVE the formula, so zeta3 extracts as x*e^x when the
+#: paper means x*e^(x^2), and zeta1's e^(cos(x/2)) extracts as e^(cos x)/2.
+#: Every reading below was checked by confirming the paper's published root
+#: actually zeroes it - the same discipline used for the set above, and the
+#: only reason the errors were caught.
+#:
+#: zeta8 is the civil-engineering beam model of the paper's Example 8. Its
+#: quartic has a DOUBLE root at x = 2, but the paper's starting point
+#: x0 = -0.55 converges to the simple root -4 + 2*sqrt(3) = -0.53589..., so
+#: the order theory still applies. Starting nearer 2 would measure a
+#: different (lower) order, which is expected behaviour at a multiple root
+#: and not a defect.
+NWM9_TEST_FUNCTIONS: list[tuple[str, Callable[[Any], Any], float, float]] = [
+    ("zeta1", lambda x: 1 + x**2 * mp.e ** mp.cos(x / 2)
+                        - (x + 1) * mp.e ** mp.sin(x / 2), 0.8475, 0.9),
+    ("zeta2", lambda x: mp.e ** (x**3 + mp.cos(x) + 1) - x**2 + x + 1,
+     -1.0787, -0.8),
+    ("zeta3", lambda x: x * mp.e ** (x**2) - mp.sin(x) ** 2
+                        + 3 * mp.cos(x) + 5, -1.2076, -1.2),
+    ("zeta4", lambda x: mp.e ** (-(x**2)) * (1 + x**3 + x**6) * (x - 2),
+     2.0000, 1.95),
+    ("zeta5", lambda x: x**7 - 4 * x**4 + x - 1, 1.5749, 1.58),
+    ("zeta6", lambda x: mp.e ** (x**2 - 4) + mp.sin(x - 2) - x**4 + 15,
+     2.0000, 2.1),
+    ("zeta7", lambda x: mp.e ** (-(x**2) + x + 2) - 1, 2.0000, 2.01),
+    ("zeta8", lambda x: x**4 + 4 * x**3 - 24 * x**2 + 16 * x + 16,
+     -0.5358983848622454, -0.55),
+]
+
+#: Which set a solver is verified against. Anything absent falls back to
+#: PAPER_TEST_FUNCTIONS, which is right for NWM10/NWM11 and harmless for the
+#: classical methods - Newton and Danby have no "own paper test set" in this
+#: project's sense, and their orders are textbook.
+SOLVER_TEST_FUNCTIONS: dict[str, list] = {
+    "nwm9": NWM9_TEST_FUNCTIONS,
+}
+
 
 # ----------------------------------------------------------------------
 # Driving a Kepler solver with an arbitrary f
 # ----------------------------------------------------------------------
 class GenericProblem:
-    """Adapter letting a solver run on any f, for verification only.
+    """Lets a solver run on any function, for verification only.
 
-    The solvers are written against :class:`~keplerbench.core.types.KeplerProblem`,
-    but the papers report their orders on generic nonlinear test functions.
-    This exposes the same evaluation surface so ``IterativeSolver.solve`` can
-    drive a solver unchanged.
+    Our solvers are written to work on a KeplerProblem, but the papers
+    report their orders on ordinary test functions. This offers the same
+    set of methods, so the normal solve loop can drive a solver unchanged.
 
-    It lives here rather than in ``core/`` on purpose: the benchmark path
-    stays Kepler-specific, and nothing on the measurement path can
-    accidentally import a generic problem into the grid run.
+    It lives here rather than in ``core/`` on purpose: the benchmark itself
+    should stay Kepler-only, and nothing on that path should be able to
+    import a generic problem by accident.
 
-    Cost accounting
-    ---------------
-    The counters are incremented so that solvers which report synthesised
-    derivatives keep working, but on a generic function ``sincos_pairs`` and
-    ``sin_only`` merely mean "paired evaluation" and "value-only evaluation".
-    They carry no Kepler meaning here, and verification output must never
-    feed the Section 4.1 cost tables.
+    A note on the cost counters
+    ---------------------------
+    They are still incremented, so solvers that report interpolated
+    derivatives keep working. But on a plain function ``sincos_pairs`` just
+    means "asked for value and slope together" and ``sin_only`` means
+    "asked for the value". There is no sin or cos here, so these numbers
+    must never end up in the Section 4.1 cost tables.
     """
 
     def __init__(
@@ -132,8 +179,8 @@ class GenericProblem:
         self.dps = dps
         self.cost = CostCounter()
 
-        # SolveResult records (e, M) for every solve; there is no eccentricity
-        # here, so they are nan and every downstream consumer must ignore them.
+        # Every SolveResult carries (e, M). There is no orbit here, so these
+        # are nan and nothing downstream should read them.
         self.e = float("nan")
         self.M = float("nan")
 
@@ -163,11 +210,12 @@ class GenericProblem:
         return tuple(out)
 
     def _derivative(self, x, k: int):
-        """f^(k)(x): analytic when supplied, otherwise from mpmath.
+        """The k-th derivative of f at x.
 
-        ``mp.diff`` is numerical, but at the working precision used here its
-        error is far below anything the order estimator can resolve.  Supply
-        ``fprime`` explicitly when you have it.
+        Uses the exact derivative when one was supplied, otherwise asks
+        mpmath to work it out numerically. mpmath's version is approximate,
+        but at the precision used here its error is far below anything the
+        order estimator can see. Pass ``fprime`` if you have it.
         """
         if k == 1 and self._fprime is not None:
             return self._fprime(x)
@@ -186,12 +234,13 @@ def refine_root(
     approximate_root: float,
     dps: int = VERIFICATION_DPS,
 ) -> Any:
-    """Sharpen a published root to ``dps`` digits.
+    """Sharpen a root printed in a paper to ``dps`` digits.
 
-    Uses mpmath's secant iteration from the paper's value.  Verifies the
-    residual afterwards and raises rather than returning a root that only
-    looks converged - a wrong reference root would silently corrupt every
-    error, and therefore every order estimate, computed against it.
+    Starts from the paper's value and refines it with mpmath. Afterwards it
+    checks the residual and raises if it is too large, rather than handing
+    back something that only looks converged. A wrong reference root would
+    quietly poison every error, and so every order estimate, measured
+    against it.
     """
     with mp.workdps(dps):
         root = mp.findroot(f, mp.mpf(approximate_root))
@@ -215,22 +264,24 @@ def verify_order_on_test_functions(
     rel_tolerance: float = 0.05,
     functions: Sequence[tuple[str, Callable[[Any], Any], float, float]] | None = None,
 ) -> list[dict]:
-    """Measure the empirical order of one solver on the paper's test set.
+    """Measure one solver's order on its paper's own test functions.
 
-    Returns one record per test function with keys ``solver``, ``function``,
-    ``measured_order``, ``claimed_order``, ``abs_diff``, ``passed``, plus the
-    diagnostics needed to explain a failure.
+    Returns one row per test function: the solver, the function, the order
+    measured, the order claimed, the gap between them, whether it passed,
+    and enough detail to explain a failure.
 
-    ``rel_tolerance`` is how far the measured order may sit from the claimed
-    one and still pass.  5% is loose enough to absorb estimator noise and
-    tight enough to catch a method that has silently degraded to its
-    memoryless base (8 vs 8.8989 is an 11% gap; 8 vs 10.7446 is 26%).
+    ``rel_tolerance`` is how far the measured order may be from the claimed
+    one and still count as a pass. 5% is loose enough to absorb noise in the
+    estimate, and tight enough to catch a method that has quietly dropped
+    back to its base version: 8 against 8.8989 is an 11% gap, 8 against
+    10.7446 is 26%.
 
-    Runs with ``tol=0.0`` so the loop cannot exit early - the estimator needs
-    the whole residual sequence, not just the part before convergence.
+    Runs with ``tol=0.0`` so the loop cannot stop early. The estimator needs
+    the whole run of residuals, not just the part before it converged.
     """
     if functions is None:
-        functions = PAPER_TEST_FUNCTIONS
+        # Each solver against its OWN paper's examples where they differ.
+        functions = SOLVER_TEST_FUNCTIONS.get(solver_name, PAPER_TEST_FUNCTIONS)
 
     solver = get_solver(solver_name)
     claimed = solver.theoretical_order
@@ -308,22 +359,22 @@ def measure_order_on_kepler(
     n_iterations: int = 8,
     dps: int = VERIFICATION_DPS,
 ) -> list[dict]:
-    """Measure each solver's order on KEPLER'S EQUATION, at extended precision.
+    """Measure order on Kepler's equation itself, at high precision.
 
-    Distinct from :func:`verify_order_on_test_functions`, which uses the
-    papers' generic test functions to check the transcription.  This asks the
-    question the project actually cares about: does the claimed order survive
-    contact with Kepler's own (e, M) operating range, including the corner
-    where f'(E) = 1 - e cos E collapses towards zero?
+    Different question from :func:`verify_order_on_test_functions`. That one
+    uses the papers' own functions to check we transcribed the formulas
+    correctly. This one asks what the project actually cares about: does the
+    claimed order hold up on Kepler, across the whole range of (e, M),
+    including the corner where f'(E) = 1 - e cos E drops towards zero?
 
-    It must run in extended precision for the same reason the paper check
-    does - an order-10 method exhausts double precision in two iterations, so
-    a double-precision measurement here returns noise, not an order.  That is
-    not a limitation worth working around; it is a finding worth reporting.
+    Needs high precision for the same reason the other check does. An
+    order-10 method uses up a double in two steps, so measuring here in
+    ordinary precision returns noise rather than an order. That is not a
+    problem to work around - it is a result worth reporting.
 
-    The reference root is obtained by bracketing bisection in mpmath, never
-    by one of the solvers under test.  |E - M| <= e < 1 for the elliptical
-    case, so [M - 1.1, M + 1.1] always brackets it.
+    The reference root comes from bracketing in mpmath, never from one of
+    the solvers being tested. For an elliptical orbit |E - M| <= e < 1, so
+    [M - 1.1, M + 1.1] always contains the root.
     """
     solver = get_solver(solver_name)
     claimed = solver.theoretical_order
@@ -376,15 +427,16 @@ BRANCH_TOL = 1e-6
 
 def kepler_check_points(n_points: int = 5000, seed: int = 0
                         ) -> list[tuple[float, float]]:
-    """(e, M) sample covering the full range, including the hard corner.
+    """A spread of (e, M) points covering the full range and the hard corner.
 
-    Reuses the grid module rather than rolling a fresh sampler, so the
-    correctness check visits the same kind of territory the benchmark does.
-    Roughly half ordinary operating range, a quarter pathological corner, a
-    quarter RadVel-realistic - the corner is over-weighted relative to its
-    area on purpose, because that is where a solver jumps branches.
+    Reuses the grid module instead of writing a new sampler, so this check
+    visits the same kind of ground the benchmark does. Roughly half ordinary
+    orbits, a quarter in the hard corner, a quarter realistic RadVel values.
+    The corner gets more points than its area deserves, on purpose: that is
+    where a solver is most likely to land on the wrong root.
 
-    ``n_points`` is a target; the blocks are sized to land near it.
+    ``n_points`` is a target, not exact - the blocks are sized to land near
+    it.
     """
     quarter = max(1, n_points // 4)
     side = max(2, int(round(math.sqrt(2 * quarter))))
@@ -398,25 +450,23 @@ def verify_kepler_correctness(solver_name: str, n_points: int = 5000,
                               tol: float = 1e-13, max_iter: int = 100,
                               guess_name: str = "simple",
                               seed: int = 0) -> dict:
-    """Check the solver returns the RIGHT root on Kepler, not just a root.
+    """Check the solver finds the RIGHT root on Kepler, not just any root.
 
-    Two failure modes, kept apart because they mean opposite things:
+    Two kinds of failure, kept apart because they mean opposite things:
 
-    * **Non-convergence** is honest.  A solver that reports failure in the
-      pathological corner has told the truth about itself, and the
-      robustness metric is where that belongs - not here.  It does not fail
-      this check.
-    * **A wrong root** is not honest.  The iteration jumped to another
-      branch, the residual |f(E)| is tiny because that branch really is a
-      root, ``converged`` is True, and every downstream number computed from
-      E is silently wrong.  This is the failure this function exists to
-      catch, and the only one that fails it.
+    * **Not converging is honest.** A solver that gives up in the hard
+      corner has told the truth about itself. That belongs in the
+      robustness numbers, not here, so it does not fail this check.
+    * **A wrong root is not honest.** The iteration has jumped to a
+      different branch. |f(E)| is tiny, because that branch really is a
+      root, and the converged flag is True - but every number computed from
+      E afterwards is wrong. That is what this function exists to catch,
+      and the only thing that fails it.
 
-    Compared against :func:`reference.reference_root`, which is an
-    independent bracketing solve at 50 digits - never one of the methods
-    under test.
+    Compared against :func:`reference.reference_root`, a separate 50-digit
+    bracketing solve - never one of the methods being tested.
 
-    Returns a dict with the counts, the worst offender, and ``passed``.
+    Returns the counts, the worst offender, and whether it passed.
     """
     solver = get_solver(solver_name)
     guess = get_guess(guess_name)
@@ -524,12 +574,12 @@ def _save_table(rows: list[dict], columns: tuple[str, ...], filename: str,
     :class:`SolveResult` objects - these two are per-solver summaries, so the
     sidecar has to be written explicitly.
 
-    NOTE(Suchi -> Anisa): this is the one place in the project that reaches
-    for ``results_io._write_meta`` by its private name. Duplicating the
-    schema here instead would be worse - two sidecar formats in one
-    ``results/`` tree - but it would be better still if the helper were
-    public, since ``experiments/error_propagation.py`` writes summary tables
-    the same way and has the same gap. Worth promoting to the public API.
+    NOTE(Suchi -> Anisa): this is the only place in the project that uses
+    ``results_io._write_meta`` despite its leading underscore. Copying the
+    format here instead would be worse, since we would end up with two
+    sidecar layouts in one results/ folder. Better still would be to make
+    the helper public: error_propagation.py writes summary tables the same
+    way and has the same gap.
     """
     table = _table(rows, columns)
     path = results_path(EXPERIMENT, filename)
@@ -539,31 +589,32 @@ def _save_table(rows: list[dict], columns: tuple[str, ...], filename: str,
 
 
 def run(config_path: str) -> None:
-    """Entry point used by scripts/run_verification.py.
+    """What scripts/run_verification.py calls.
 
-    Runs both checks for every solver in the config and writes
+    Runs both checks on every solver listed in the config, then writes
 
-      results/verification/order.csv     one row per (solver, test function)
+      results/verification/order.csv     one row per solver per function
       results/verification/summary.csv   one row per solver, both checks
 
-    then prints a PASS/FAIL line each.  Every number in those files is
-    measured here; nothing is transcribed by hand.
+    and prints a PASS or FAIL line for each. Every number in those files is
+    measured here - none of it is typed in by hand.
 
-    A solver that is still a skeleton is warned about and skipped rather
-    than aborting the run, so this stays usable while the team works in
-    parallel.
+    A solver that is not written yet gets a warning and is skipped, rather
+    than stopping the whole run. That keeps this usable while the team is
+    still working in parallel.
     """
     cfg = load_config(config_path)
     dps = int(cfg.extra.get("working_precision_dps", VERIFICATION_DPS))
     n_points = int(cfg.extra.get("kepler_check_points", 5000))
-    # cfg.tol is 0.0 for this experiment - that is what forces the order run
-    # to take exactly max_iter iterations. It is NOT a usable stopping
-    # tolerance for the correctness sweep, which needs a real one.
+    # cfg.tol is 0.0 here on purpose: that is what makes the order run take
+    # exactly max_iter steps. It is NOT a usable stopping tolerance for the
+    # correctness sweep below, which needs a real one.
     kepler_tol = float(cfg.extra.get("kepler_check_tol", 1e-13))
     guess_name = cfg.guesses[0] if cfg.guesses else "simple"
 
     print(f"verification: {len(cfg.solvers)} solvers, {dps} dps, "
-          f"{len(PAPER_TEST_FUNCTIONS)} test functions, "
+          f"{len(PAPER_TEST_FUNCTIONS)} test functions "
+          f"({len(NWM9_TEST_FUNCTIONS)} for nwm9, from its own paper), "
           f"~{n_points} Kepler points")
 
     order_rows: list[dict] = []

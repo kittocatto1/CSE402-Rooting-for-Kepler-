@@ -265,3 +265,54 @@ def test_run_skips_an_unimplemented_solver_instead_of_aborting(
     finally:
         registry._SOLVERS.clear()
         registry._SOLVERS.update(originals)
+
+
+# ----------------------------------------------------------------------
+# Each solver against its OWN paper's examples
+# ----------------------------------------------------------------------
+@pytest.mark.parametrize("functions,label", [
+    (verification.PAPER_TEST_FUNCTIONS, "NWM11 paper (AIMS Math 10(3))"),
+    (verification.NWM9_TEST_FUNCTIONS, "NWM9 paper (Mathematics 12(22) 3490)"),
+])
+def test_published_roots_actually_zero_their_functions(functions, label):
+    """The only check that catches a mis-transcribed test function.
+
+    Both PDFs print superscripts on the line ABOVE the formula, so a text
+    extraction silently turns x*e^(x^2) into x*e^x and e^(cos(x/2)) into
+    e^(cos x)/2. Six of NWM9's eight examples were affected. A wrong function
+    still has *a* root and still converges, so nothing downstream notices -
+    except that the root the paper published no longer zeroes it.
+
+    The published values carry only 4-6 digits, hence the loose tolerance:
+    this is a transcription check, not an accuracy one.
+    """
+    import mpmath as mp
+
+    with mp.workdps(40):
+        for name, f, published_root, _ in functions:
+            residual = abs(f(mp.mpf(published_root)))
+            assert residual < mp.mpf("1e-2"), (
+                f"{label}: {name} does not vanish at its published root "
+                f"{published_root} (|f| = {mp.nstr(residual, 6)}); the "
+                "transcription is wrong"
+            )
+
+
+def test_nwm9_is_verified_against_its_own_paper():
+    """NWM9 and NWM11 come from different papers with different test sets.
+
+    Verifying NWM9 on NWM11's functions is still evidence - order is a
+    property of the method - but the project's rule is the paper's OWN set,
+    and only that reproduces the table the paper published.
+    """
+    chosen = verification.SOLVER_TEST_FUNCTIONS.get(
+        "nwm9", verification.PAPER_TEST_FUNCTIONS)
+    assert chosen is verification.NWM9_TEST_FUNCTIONS
+    assert len(chosen) == 8
+    # The two sets must not be silently interchangeable.
+    assert {n for n, *_ in verification.NWM9_TEST_FUNCTIONS} != \
+           {n for n, *_ in verification.PAPER_TEST_FUNCTIONS}
+    # nwm11 keeps the default set.
+    assert verification.SOLVER_TEST_FUNCTIONS.get(
+        "nwm11", verification.PAPER_TEST_FUNCTIONS) \
+        is verification.PAPER_TEST_FUNCTIONS
