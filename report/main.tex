@@ -440,7 +440,7 @@ every fit that the patch was actually used.
 
 All experiments and figures were rerun on the current code for this
 report, and each result table records the commit that produced it. The repository's README maps each table and figure to the script
-and result file behind it. The test suite has 275 tests, including checks
+and result file behind it. The test suite has 284 tests, including checks
 of every solver against its paper and of the safeguard's three claims.
 
 % =====================================================================
@@ -886,14 +886,14 @@ The spread across 50 noisy refits agrees with RadVel's MCMC posterior
 width to within 3\% for $e$ and $K$, 10\% for $\omega$ and 21\% for $P$.
 This is an independent check on the noise study itself.
 
-\begin{figure}[h]
+\begin{figure*}[t]
 \centering
-\fig{propagation/tolerance_vs_parameter_shift.pdf}
+\fig[0.8\textwidth]{propagation/tolerance_vs_parameter_shift.pdf}
 \caption{Parameter shift against solver tolerance, in units of the noise
 spread. Only Newton at $10^{-4}$ rises clearly above the floor set by the
 optimiser.}
 \label{fig:tol}
-\end{figure}
+\end{figure*}
 
 \paragraph{Cost of a whole fit.} Table~\ref{tab:fit} shows the time of a
 full RadVel fit with each solver. All of our solvers are 18 to 32 times
