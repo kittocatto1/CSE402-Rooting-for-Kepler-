@@ -51,27 +51,25 @@ With-Memory Root Finders on Kepler's Equation}
 
 % =====================================================================
 \begin{abstract}
-Kepler's equation, $E - e\sin E = M$, has to be solved every time an
-orbit is evaluated, and one radial-velocity fit in our study
-solves it about 130{,}000 times. Two recent papers propose with-memory iterative
-methods, NWM9 (2024) and NWM11 (2025), with convergence orders $8.90$ and
-$10.74$ and no extra function evaluations. Neither paper tests them on
-Kepler's equation. We reimplemented both, confirmed their orders at
-2000-digit precision, and compared them with Newton's, Danby's and
-Markley's methods over 125{,}800 solves on a 7{,}400-point grid of
-eccentricity $e$ and mean anomaly $M$, with four starting
+Kepler's equation, $E - e\sin E = M$, is solved every time an orbit is
+evaluated, about 130{,}000 times in one radial-velocity fit. Two recent
+papers propose with-memory iterative methods, NWM9 (2024) and NWM11
+(2025), that reach convergence orders $8.90$ and $10.74$ with no extra
+function evaluations, but neither tests them on Kepler's equation. We
+reimplemented both, confirmed their orders at 2000 digits, and compared
+them with Newton's, Danby's and Markley's methods in 125{,}800 solves over
+7{,}400 values of eccentricity $e$ and mean anomaly $M$ and four starting
 guesses. The new methods need the fewest iterations (1.38 for NWM11
 against 1.94 for Danby), but in the corner $e > 0.9$, $M < 0.1$ they fail
-to converge 33 to 37 times as often as Danby. We traced these failures to
-the self-accelerating parameter: where $f'(E) = 1 - e\cos E$ is close to
-zero, the parameter's correction term becomes as large as the derivative
-it is meant to adjust, because the parameter itself divides by $f'$. We propose a one-line safeguard that keeps the
-parameter only when its term is less than half of $|f'|$. Safeguarded
-NWM11 cuts its failures from 74 to 3 (Danby has 2), keeps its measured
-order of $10.74$ up to $e = 0.999$, and needs the same number of
-iterations. The starting guess matters as much as the
-method: Napier's guess lowers NWM9's mean iteration count from 2.37 to
-1.44. Finally, even in the worst case, solver error moves the fitted orbit
+33 to 37 times as often as Danby. We traced these failures to the
+self-accelerating parameter. It divides by $f'(E) = 1 - e\cos E$, so near
+$f' = 0$ its correction grows as large as the derivative it adjusts. We
+propose a one-line safeguard that keeps the parameter only when its
+correction is at most half of $|f'|$. Safeguarded NWM11 cuts its failures
+from 74 to 3 (Danby has 2) and keeps both its iteration count and its
+measured order of $10.74$ up to $e = 0.999$. The starting guess matters as
+much as the method: Napier's guess lowers NWM9's mean iteration count from
+2.37 to 1.44. Even in the worst case, solver error moves the fitted orbit
 about 1{,}500 times less than measurement noise does.
 \end{abstract}
 
@@ -224,8 +222,10 @@ $\sin$ calls.
 
 Two implementation details decide whether the parameters come out right.
 The node lists repeat a point, for example
-$[s_k, s_k, t_{k-1}, v_{k-1}, s_{k-1}, s_{k-1}]$, which makes an ordinary
-divided difference $0/0$. Our interpolation code therefore uses the
+\[
+[\,s_k,\ s_k,\ t_{k-1},\ v_{k-1},\ s_{k-1},\ s_{k-1}\,],
+\]
+which makes an ordinary divided difference $0/0$. Our interpolation code therefore uses the
 confluent (Hermite) form and takes $f'$ at a repeated node. The papers
 also need the derivative $H^{(k)}$ itself, not the Taylor coefficient
 $H^{(k)}/k!$. Using the coefficient makes the parameter wrong by a factor
@@ -333,9 +333,11 @@ $f'(s_k) \to f'(E^*) \ne 0$, and the parameters stay bounded, so
 after some iteration $|\lambda f|$ stays below $c|f'|$ and the test passes
 every time. From then on the guarded method takes exactly the published
 steps, so it has the published asymptotic order. We confirm this numerically in
-Section~\ref{sec:fix}. A preliminary run with $c = 0.1$
-and $c = 0.01$ also removed most failures. That run is not among the
-committed results, so every number in this report uses $c = 1/2$.
+Section~\ref{sec:fix}. For $\alpha_k$, $c = 1/2$ keeps the denominator
+$f'(s_k) + \alpha_k f(s_k)$ between $\tfrac12$ and $\tfrac32$ times
+$f'(s_k)$, with the same sign, so the parameter can at most double the
+Newton step and can never reverse it. Every number in this report uses
+$c = 1/2$.
 
 \subsection{Starting guesses}
 \label{sec:guesses}
@@ -808,8 +810,13 @@ $y \approx 6.7$ and $u \approx -63$. The $u^2$ term makes the bracket about
 $3{,}200$, and the first iterate is $E_1 \approx 2.1\times10^{4}$. From the
 canonical guess the same run reaches $|E| \approx 10^{27}$ and fails. The
 overshoot happens in the first iteration, before any memory exists, so the
-guard cannot prevent it. A better guess can: from Napier's guess NWM9
-converges on all 7{,}400 grid points (Section~\ref{sec:guess}).
+guard cannot prevent it. What the memory changes is the recovery. The next
+parameter is fitted through iterates that lie far apart, so it no longer
+describes $f$ near the root, and the run keeps wandering. With the memory
+off, NWM9 converges on 79 of the 81 solves where the published version
+fails (Section~\ref{sec:failure}). A better guess avoids the overshoot
+altogether: from Napier's guess NWM9 converges on all 7{,}400 grid points
+(Section~\ref{sec:guess}).
 
 \begin{table}[h]
 \centering\footnotesize
@@ -924,9 +931,9 @@ matches the published version at every eccentricity in
 Table~\ref{tab:ordere}, up to $10.74$ at $e = 0.999$.
 
 \paragraph{NWM9.} The guard cuts NWM9's failures from 81 to 17, about as
-many as switching the memory off leaves (18). The remaining failures do
-not come from the parent method: only 2 of the 17 also fail with the
-memory off. All 17 start from the simple or canonical guess at $e > 0.94$,
+many as switching the memory off leaves (18). The remaining failures are
+mostly new ones: only 2 of the 17 also fail with the memory off, and the
+published NWM9 converges on 11 of them. All 17 start from the simple or canonical guess at $e > 0.94$,
 where NWM9's second sub-step can throw the first iterate far from the root
 (Section~\ref{sec:orderdrop}). That sub-step has no parameter, so the
 guard does not act on it. The guard keeps NWM9's order on its test
@@ -966,8 +973,8 @@ fresh noise. MCMC: RadVel posterior width from one MCMC run capped at
 \textbf{Param.} & \textbf{Solver} & \textbf{Noise} & \textbf{MCMC} & \textbf{Noise/solver} \\
 \midrule
 $P$ (d)  & $1.0\times10^{-8}$ & $5.0\times10^{-4}$  & $6.4\times10^{-4}$  & $51{,}000$ \\
-$e$      & $1.1\times10^{-5}$ & $1.65\times10^{-2}$ & $1.71\times10^{-2}$ & $1{,}500$ \\
-$\omega$ & $2.3\times10^{-5}$ & $5.03\times10^{-2}$ & $5.44\times10^{-2}$ & $2{,}200$ \\
+$e$      & $1.1\times10^{-5}$ & $1.65\times10^{-2}$ & $1.74\times10^{-2}$ & $1{,}500$ \\
+$\omega$ & $2.3\times10^{-5}$ & $5.03\times10^{-2}$ & $5.53\times10^{-2}$ & $2{,}200$ \\
 $K$      & $3.5\times10^{-5}$ & $9.93\times10^{-2}$ & $1.02\times10^{-1}$ & $2{,}800$ \\
 \bottomrule
 \end{tabular}
@@ -982,7 +989,7 @@ error of $10^{-4}$ in $E$ moves $v_r$ by at most
 $7\times10^{-4}$\,m\,s$^{-1}$. The measurement uncertainties are 0.8 to
 3.0\,m\,s$^{-1}$.
 
-Only Newton at $10^{-4}$ shows a clear solver effect, $6.5\times10^{-4}$
+Only Newton at $10^{-4}$ shows a clear solver effect, $6.4\times10^{-4}$
 posterior widths in $e$. Newton's last step can stop with $|f|$ just
 under the tolerance, which leaves an error of about $10^{-4}$ in $E$; a
 fourth-order or higher step that passes the same test lands many orders
@@ -997,7 +1004,7 @@ shift is zero at $10^{-14}$ by construction, and Markley, which has no
 tolerance, gives the same fit at every setting.
 
 The spread across the 50 noisy refits agrees with the MCMC posterior
-width to within 3\% for $K$, 4\% for $e$, 8\% for $\omega$ and 21\% for
+width to within 3\% for $K$, 5\% for $e$, 9\% for $\omega$ and 21\% for
 $P$. The two estimates of the noise are computed independently, so their
 agreement checks both.
 
@@ -1011,12 +1018,14 @@ optimiser.}
 \end{figure*}
 
 \paragraph{Cost of a whole fit.} Table~\ref{tab:fit} shows the time of a
-full RadVel fit with each solver. All of our solvers are 18 to 32 times
+full RadVel fit with each solver. All of our solvers are 20 to 32 times
 slower than RadVel's compiled one. Most of that gap comes from calling a
 scalar Python solver once per point, where RadVel works on whole arrays,
 so these numbers compare our solvers with each other, not with production
-code. Newton, Danby and Markley take 0.87 to 1.04\,s. NWM11 takes
-1.29\,s and NWM9 1.46\,s, 1.4 and 1.6 times as long as Danby.
+code. Newton and Markley take 0.89 and 1.01\,s, NWM11
+1.29\,s and NWM9 1.52\,s. Danby's median, 1.32\,s, is pulled up by two
+slow fits (1.63 and 1.88\,s). With one timing per fit, the only clear result is that every
+NWM9 fit took longer than every Newton or Markley fit.
 
 \begin{table}[h]
 \centering\small
@@ -1027,11 +1036,11 @@ median over six tolerances. Each fit was timed once.}
 \toprule
 \textbf{Solver} & \textbf{Fit (s)} & \textbf{vs.\ RadVel} & \textbf{$\mu$s per solve} \\
 \midrule
-Newton  & 0.87 & 19.5$\times$ & 7.0 \\
-Danby   & 0.93 & 20.5$\times$ & 6.9 \\
-Markley & 1.04 & 22.3$\times$ & 8.0 \\
-NWM11   & 1.29 & 28.6$\times$ & 9.7 \\
-NWM9    & 1.46 & 32.2$\times$ & 10.3 \\
+Newton  & 0.89 & 20.0$\times$ & 7.0 \\
+Markley & 1.01 & 21.9$\times$ & 7.8 \\
+NWM11   & 1.29 & 28.4$\times$ & 9.4 \\
+Danby   & 1.32 & 23.9$\times$ & 9.7 \\
+NWM9    & 1.52 & 31.8$\times$ & 10.8 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1065,7 +1074,7 @@ Table~\ref{tab:synth} collects the results.
 Order        & Both papers' claims hold (8.93 and 10.76 measured). \\
 Iterations   & With-memory methods need the fewest (1.38 vs.\ 1.94 for Danby). \\
 Model cost   & Median solve 17\% cheaper than Danby, from the eighth-order parent, not the memory; the mean solve costs more. \\
-Clock time   & Slower than Danby in Python: 1.4--1.8$\times$ per solve, 1.4--1.6$\times$ per fit. \\
+Clock time   & Slower than Danby in Python: 1.4--1.8$\times$ per solve; per fit, NWM9 is slowest. \\
 Corner       & Published versions fail 33--37$\times$ as often as Danby. \\
 Cause        & The self-accelerating parameter, where $f' \approx 0$. \\
 Fix          & Guarded NWM11: 74 $\to$ 3 failures, same order and iterations. \\
@@ -1117,9 +1126,9 @@ for guarded NWM11 (6.3 against 4.9 for Danby).
       the with-memory methods specifically.
 \item \textbf{One machine.} The cost weights were measured on one machine
       and may differ on another. Each RadVel fit was timed once, and
-      the six fits for one solver vary by up to 0.3\,s (Newton's took
-      0.80 to 1.08\,s), so the 0.17\,s spread between Newton, Danby and
-      Markley is within the noise.
+      the six fits for one solver vary by up to 1.0\,s (Danby's took
+      0.91 to 1.88\,s), so per-fit times separate only NWM9 from Newton
+      and Markley.
 \item \textbf{The guard constant.} We chose $c = 1/2$ on the same grid we
       report. We also tried $0.1$ and $0.01$, but those runs are not
       saved in the repository, and the guard has not been tested on a
