@@ -18,6 +18,7 @@ Owner: Anisa.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,8 +44,14 @@ HISTORY_COLUMNS = ("solver", "guess", "e", "M",
 
 
 def results_path(experiment: str, filename: str) -> Path:
-    """Full path to a result file, creating the directory if needed."""
-    d = REPO_ROOT / "results" / experiment
+    """Full path to a result file, creating the directory if needed.
+
+    The environment variable KEPLERBENCH_RESULTS_DIR, if set, replaces
+    ``results/``. The tests that run whole experiments use it so they never
+    overwrite the committed tables.
+    """
+    root = Path(os.environ.get("KEPLERBENCH_RESULTS_DIR", REPO_ROOT / "results"))
+    d = root / experiment
     d.mkdir(parents=True, exist_ok=True)
     return d / filename
 

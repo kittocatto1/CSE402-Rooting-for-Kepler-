@@ -355,9 +355,10 @@ def test_run_reference_mcmc_returns_finite_posterior_widths():
         assert all(math.isfinite(v) and v >= 0 for v in sigma.values())
 
 
-def test_error_propagation_run_needs_config_loading():
+def test_error_propagation_run_needs_config_loading(tmp_path, monkeypatch):
     """run() itself is a thin wrapper around Anisa's io.config.load_config;
     it should skip cleanly until that lands, not fail."""
+    monkeypatch.setenv("KEPLERBENCH_RESULTS_DIR", str(tmp_path))
     with skip_if_unimplemented():
         error_propagation.run("configs/error_propagation.yaml")
 
@@ -452,7 +453,8 @@ def test_run_monte_carlo_handles_nan_gamma_from_a_multi_instrument_fit():
         assert mc_df["e"].notna().all()
 
 
-def test_monte_carlo_run_needs_config_loading():
+def test_monte_carlo_run_needs_config_loading(tmp_path, monkeypatch):
+    monkeypatch.setenv("KEPLERBENCH_RESULTS_DIR", str(tmp_path))
     with skip_if_unimplemented():
         monte_carlo.run("configs/monte_carlo.yaml")
 
