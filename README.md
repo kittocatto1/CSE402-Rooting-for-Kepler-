@@ -82,6 +82,7 @@ optional config path; the default is the one shown.
 | Verification against the papers | `configs/verification.yaml` | `scripts/run_verification.py` | `verification/order.csv`, `kepler_order.csv`, `summary.csv` |
 | Grid benchmark (main experiment) | `configs/grid_benchmark.yaml` | `scripts/run_grid_benchmark.py` | `grid_benchmark/raw.csv`, `history.csv`, `timing.csv`, `summary.csv` |
 | Safeguarded NWM9/NWM11 | `configs/safeguard.yaml` | `scripts/run_safeguard.py` | `safeguard/raw.csv`, `summary.csv`, `order.csv` |
+| One repaired failure, iteration by iteration | none (reads `safeguard/raw.csv`) | `scripts/run_repair_trajectory.py` | `safeguard/trajectory.csv` |
 | Solver tolerance to RV fit parameters | `configs/error_propagation.yaml` | `scripts/run_error_propagation.py` | `error_propagation/raw.csv`, `summary.csv`, `timing.csv`, `posterior_sigma.csv` |
 | Measurement-noise Monte Carlo | `configs/monte_carlo.yaml` | `scripts/run_monte_carlo.py` | `monte_carlo/raw.csv`, `summary.csv` |
 | Solver agreement on real RV data | none | `scripts/run_real_data_checks.py` | `real_data/summary.csv` |
@@ -139,6 +140,7 @@ entry name is the file name). The report includes the ten marked "yes".
 | `grid/guess_effect` | `grid_benchmark/raw.csv` | no |
 | `grid/iterations_all_combinations` | `grid_benchmark/raw.csv` (sets from `configs/grid_benchmark.yaml`) | no |
 | `safeguard/safeguard_failures` | `safeguard/summary.csv` | yes |
+| `safeguard/repair_trajectory` | `safeguard/trajectory.csv` | yes |
 | `propagation/tolerance_vs_parameter_shift` | `error_propagation/summary.csv` | yes |
 | `propagation/error_budget` | `error_propagation/summary.csv`, `error_propagation/posterior_sigma.csv`, `monte_carlo/summary.csv` | no |
 | `propagation/amplification` | none (analytic) | no |
