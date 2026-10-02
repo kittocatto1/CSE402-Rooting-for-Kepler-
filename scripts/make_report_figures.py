@@ -40,12 +40,14 @@ import pandas as pd
 matplotlib.use("Agg")           # no display on a lab machine or in CI
 import matplotlib.pyplot as plt  # noqa: E402
 
+from keplerbench.io.config import load_config  # noqa: E402
 from keplerbench.io.results_io import REPO_ROOT, load_results  # noqa: E402
 from keplerbench.plotting import (  # noqa: E402
     convergence_plots,
     cost_plots,
     grid_plots,
     propagation_plots,
+    summary_plots,
 )
 from keplerbench.plotting.style import FIGURE_DIR, save_figure, use_report_style  # noqa: E402
 
@@ -53,6 +55,7 @@ GRID = "grid_benchmark"
 VERIFICATION = "verification"
 PROPAGATION = "error_propagation"
 MONTE_CARLO = "monte_carlo"
+SAFEGUARD = "safeguard"
 
 
 # ----------------------------------------------------------------------
@@ -203,6 +206,43 @@ def _amplification() -> plt.Figure:
     return propagation_plots.plot_amplification([0.0, 0.5, 0.9, 0.99]).figure
 
 
+def _grid_spec() -> dict:
+    """The grid block the benchmark was run with.
+
+    The summary figures split the sweep into its uniform, corner and RadVel
+    sets by matching points against these definitions, so they are read from
+    the same config the experiment used rather than assumed.
+    """
+    return load_config(REPO_ROOT / "configs" / "grid_benchmark.yaml").grid
+
+
+def _iterations_best_guess() -> plt.Figure:
+    return summary_plots.plot_iterations_best_guess(load_results(GRID, "raw.csv"),
+                                                    grid_spec=_grid_spec())
+
+
+def _iterations_all_combinations() -> plt.Figure:
+    return summary_plots.plot_iterations_all_combinations(
+        load_results(GRID, "raw.csv"), grid_spec=_grid_spec())
+
+
+def _failure_maps_by_solver() -> plt.Figure:
+    return summary_plots.plot_failure_maps_by_solver(load_results(GRID, "raw.csv"))
+
+
+def _iterations_by_guess() -> plt.Figure:
+    return summary_plots.plot_iterations_by_guess(load_results(GRID, "raw.csv"))
+
+
+def _iterations_by_set() -> plt.Figure:
+    return summary_plots.plot_iterations_by_set(load_results(GRID, "raw.csv"),
+                                                grid_spec=_grid_spec())
+
+
+def _safeguard_failures() -> plt.Figure:
+    return summary_plots.plot_safeguard_failures(load_results(SAFEGUARD, "summary.csv"))
+
+
 #: In report order. The section name is also the figures/ subdirectory.
 FIGURES = [
     Figure("residual_histories", "convergence", _residual_histories,
@@ -217,6 +257,16 @@ FIGURES = [
            [(GRID, "raw.csv")]),
     Figure("guess_effect", "grid", _guess_effect,
            [(GRID, "raw.csv")]),
+    Figure("iterations_by_guess", "grid", _iterations_by_guess,
+           [(GRID, "raw.csv")]),
+    Figure("iterations_by_set", "grid", _iterations_by_set,
+           [(GRID, "raw.csv")]),
+    Figure("iterations_best_guess", "grid", _iterations_best_guess,
+           [(GRID, "raw.csv")]),
+    Figure("iterations_all_combinations", "grid", _iterations_all_combinations,
+           [(GRID, "raw.csv")]),
+    Figure("failure_maps_by_solver", "grid", _failure_maps_by_solver,
+           [(GRID, "raw.csv")]),
     Figure("cost_breakdown", "cost", _cost_breakdown, []),
     Figure("cost_vs_accuracy", "cost", _cost_vs_accuracy,
            [(GRID, "raw.csv")]),
@@ -228,6 +278,8 @@ FIGURES = [
            [(PROPAGATION, "summary.csv"), (PROPAGATION, "posterior_sigma.csv"),
             (MONTE_CARLO, "summary.csv")]),
     Figure("amplification", "propagation", _amplification, []),
+    Figure("safeguard_failures", "safeguard", _safeguard_failures,
+           [(SAFEGUARD, "summary.csv")]),
 ]
 
 
