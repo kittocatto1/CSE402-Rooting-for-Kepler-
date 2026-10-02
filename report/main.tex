@@ -1047,10 +1047,12 @@ reference.}
 \fig{safeguard/repair_trajectory.pdf}
 \caption{One repaired failure. Top: error per iteration for published,
 memory-off and guarded NWM11 at a hard-corner point. Bottom: the
-correction sizes the published method used. $\beta_k$'s correction passes
-the guard's limit at iterations 2 and 3 and reaches $10^9$ at iteration 5,
-which throws the iterate about 3{,}000 radians away; the guarded version
-rejects those steps and converges in six iterations. Data:
+correction sizes the published method used. The $\beta_k$ correction
+exceeds the guard's limit at iterations 2 and 3. At iteration 5 the second
+sub-step has already moved the iterate about 3{,}000 radians from the root
+before $\beta_k$ is evaluated, and the final correction does not recover
+it. Memory-off and guarded NWM11 converge in four and six iterations.
+Data:
 \texttt{results/safeguard/trajectory.csv}.}
 \label{fig:trajectory}
 \end{figure}
@@ -1058,8 +1060,10 @@ rejects those steps and converges in six iterations. Data:
 \paragraph{NWM11.} Figure~\ref{fig:trajectory} shows the guard at work on
 one failing point. The published method's $\beta_k$ correction grows past
 half of $|f'|$ while the iterate is still about one radian from the root,
-exactly the situation of Section~\ref{sec:failure}, and one later step is
-thrown thousands of radians away. Across the grid, the guard cuts NWM11's
+exactly the situation of Section~\ref{sec:failure}. The guarded run
+rejects those corrections and takes a different path; the published run
+keeps wandering until, at iteration 5, its second sub-step lands about
+3{,}000 radians away. Across the grid, the guard cuts NWM11's
 failures from 74 to 3. That is
 fewer than switching the memory off (9), and close to Danby (2). The
 guarded version converges on all 9 solves that fail with the memory off,
