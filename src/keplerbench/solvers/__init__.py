@@ -7,6 +7,7 @@
   Established Kepler      Markley           closed     Dipit
   With-memory (2024)      NWM9              8.8989     Suchi
   With-memory (2025)      NWM11             10.7446    Suchi
+  Safeguarded             NWM9/NWM11 guarded (same order)   Mahdi
 """
 
 from keplerbench.solvers.newton import NewtonSolver  # noqa: F401
@@ -14,3 +15,9 @@ from keplerbench.solvers.danby import DanbySolver  # noqa: F401
 from keplerbench.solvers.markley import MarkleySolver  # noqa: F401
 from keplerbench.solvers.nwm9 import NWM9Solver  # noqa: F401
 from keplerbench.solvers.nwm11 import NWM11Solver  # noqa: F401
+from keplerbench.solvers.safeguarded import (  # noqa: F401
+    NWM9GuardedSolver,
+    NWM9MemorylessSolver,
+    NWM11GuardedSolver,
+    NWM11MemorylessSolver,
+)

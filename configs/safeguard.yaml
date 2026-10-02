@@ -1,0 +1,33 @@
+# Safeguarded NWM9 / NWM11 against the published versions and their
+# memoryless controls, on the same grid as the main benchmark.
+# Owner: Mahdi.
+name: safeguard
+
+solvers: [danby, nwm9, nwm9_memoryless, nwm9_guarded,
+          nwm11, nwm11_memoryless, nwm11_guarded]
+guesses: [simple, canonical, radvel, napier]
+
+tol: 1.0e-14
+max_iter: 50
+record_history: false
+use_reference: true
+seed: 0
+
+grid:
+  type: combined
+  uniform:
+    n_e: 50
+    n_M: 100
+    e_max: 0.99
+  pathological:
+    n_e: 20
+    n_M: 20
+    e_min: 0.9
+    M_max: 0.1
+  radvel:
+    n_samples: 2000
+
+extra:
+  # Eccentricities for re-measuring order on Kepler itself at M = 0.3,
+  # the same scan the verification experiment uses.
+  order_eccentricities: [0.3, 0.7, 0.9, 0.95, 0.99, 0.995, 0.999]
