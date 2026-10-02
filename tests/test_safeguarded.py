@@ -2,8 +2,10 @@
 
 Three promises are checked:
 
-  1. Away from the hard corner the guard never fires, so the guarded solver
-     takes exactly the same steps as the published one.
+  1. On well-conditioned points the guard does not fire, so the guarded
+     solver takes exactly the same steps as the published one. (On the full
+     grid it changes the iteration count of 0.4% of NWM11's solves outside
+     the hard corner; results/safeguard/ has the details.)
   2. In the hard corner the guarded solver fails less often than the
      published one.
   3. The guard does not cost convergence order: at 2000 digits the guarded
@@ -17,6 +19,7 @@ import pytest
 
 import keplerbench.guesses  # noqa: F401
 import keplerbench.solvers  # noqa: F401
+import keplerbench.solvers.safeguarded  # noqa: F401  (registers the guarded solvers)
 from keplerbench.core.registry import get_guess, get_solver
 from keplerbench.experiments.grid import pathological_grid
 from keplerbench.experiments.runner import solve_one
