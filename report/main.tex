@@ -362,7 +362,10 @@ fixed correction, so it takes no guess and runs once per point.
 
 \subsection{Code structure}
 
-The code is a Python package, \texttt{keplerbench}. Every solver and every
+The code is a Python package, \texttt{keplerbench}, built on NumPy
+\cite{numpy}, SciPy \cite{scipy}, pandas \cite{pandas} and Matplotlib
+\cite{matplotlib}; the radial-velocity study uses RadVel \cite{radvel},
+whose MCMC runs on emcee \cite{emcee}. Every solver and every
 starting guess implements one shared interface, so the experiment runner
 treats them all the same way and every iterative solver uses the same
 stopping rule: stop when $|f(E)| \le 10^{-14}$, or give up after 50
@@ -702,7 +705,7 @@ concentrated at high $e$ and low $M$.
 
 \begin{figure*}[t]
 \centering
-\fig[0.78\textwidth]{grid/iterations_best_guess.pdf}
+\fig[0.7\textwidth]{grid/iterations_best_guess.pdf}
 \caption{Iterations to tolerance on the even grid, each solver with its
 best guess. All four solvers are cheap almost everywhere; the cost is
 concentrated near $e \to 1$, $M \to 0$.}
@@ -746,7 +749,7 @@ Figure~\ref{fig:failmaps} shows where each solver fails.
 
 \begin{figure*}[t]
 \centering
-\fig[0.9\textwidth]{grid/failure_maps_by_solver.pdf}
+\fig[0.82\textwidth]{grid/failure_maps_by_solver.pdf}
 \caption{Converged and failed solves for each solver, all guesses
 together. The vertical axis is $1-e$ on a log scale, so the top of each
 panel is $e \to 1$; dashed lines mark the hard corner. Almost every
@@ -1124,15 +1127,15 @@ for guarded NWM11 (6.3 against 4.9 for Danby).
 \item \textbf{Python only.} All timings are in CPython, which has no fused
       \texttt{sincos} and makes arithmetic expensive. This works against
       the with-memory methods specifically.
-\item \textbf{One machine.} The cost weights were measured on one machine
-      and may differ on another. Each RadVel fit was timed once, and
+\item \textbf{One machine.} The cost weights were measured on one machine,
+      under CPython 3.14, while the benchmarks ran under CPython 3.12 on
+      the same machine; the weights may differ elsewhere. Each RadVel fit was timed once, and
       the six fits for one solver vary by up to 1.0\,s (Danby's took
       0.91 to 1.88\,s), so per-fit times separate only NWM9 from Newton
       and Markley.
-\item \textbf{The guard constant.} We chose $c = 1/2$ on the same grid we
-      report. We also tried $0.1$ and $0.01$, but those runs are not
-      saved in the repository, and the guard has not been tested on a
-      separate set of points.
+\item \textbf{The guard constant.} We set $c = 1/2$ from the guard's
+      own algebra (Section~\ref{sec:guard}), did not tune it, and report
+      no other value. The guard has been tested only on our grid.
 \item \textbf{NWM9's remaining failures.} The guard leaves 17 NWM9
       failures, all from the simple or canonical guess at $e > 0.94$. It
       does not act on NWM9's second sub-step, which has no parameter.
@@ -1257,6 +1260,32 @@ Dynamical masses of two sub-Saturns in the K2-24 system.
 F.~Johansson et al.
 mpmath: a Python library for arbitrary-precision floating-point
 arithmetic, version 1.4.1. \url{https://mpmath.org}.
+
+\bibitem{numpy}
+C.~R. Harris et al.
+Array programming with NumPy.
+\emph{Nature}, 585:357--362, 2020.
+
+\bibitem{scipy}
+P.~Virtanen et al.
+SciPy 1.0: fundamental algorithms for scientific computing in Python.
+\emph{Nature Methods}, 17:261--272, 2020.
+
+\bibitem{pandas}
+W.~McKinney.
+Data structures for statistical computing in Python.
+In \emph{Proc.\ 9th Python in Science Conference}, pages 56--61, 2010.
+
+\bibitem{matplotlib}
+J.~D. Hunter.
+Matplotlib: a 2D graphics environment.
+\emph{Computing in Science \& Engineering}, 9(3):90--95, 2007.
+
+\bibitem{emcee}
+D.~Foreman-Mackey, D.~W. Hogg, D.~Lang and J.~Goodman.
+emcee: the MCMC hammer.
+\emph{Publications of the Astronomical Society of the Pacific},
+125:306--312, 2013.
 
 \end{thebibliography}
 

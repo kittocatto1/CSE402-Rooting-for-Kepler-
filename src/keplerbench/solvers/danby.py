@@ -2,8 +2,8 @@
 
 Reference
 ---------
-J. M. A. Danby, "The solution of Kepler's equation. I", Celestial Mechanics
-40(3-4), 303-312, 1987.  doi:10.1007/BF01230252
+J. M. A. Danby, "The solution of Kepler's equation. III", Celestial Mechanics
+40(3-4), 303-312, 1987.  doi:10.1007/BF01235847
 
 Why it is in the benchmark: it is the solver RadVel actually ships, so it is
 the "current practical standard" the newer methods have to beat, not a
@@ -51,7 +51,7 @@ class DanbySolver(IterativeSolver):
 
     theoretical_order = 4.0
     category = "established"
-    reference = "Danby (1987), doi:10.1007/BF01230252"
+    reference = "Danby (1987), doi:10.1007/BF01235847"
 
     def step(self, problem: KeplerProblem, E: float, state: dict[str, Any]) -> float:
         # TODO(Dipit):

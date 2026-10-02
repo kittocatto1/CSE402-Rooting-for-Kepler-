@@ -44,8 +44,10 @@ from keplerbench.solvers.nwm9 import NWM9Solver
 from keplerbench.solvers.nwm11 import NWM11Solver
 
 #: Largest allowed size of the correction term, as a fraction of |f'|.
-#: Chosen on the grid benchmark: 0.5, 0.1 and 0.01 all remove most of the
-#: corner failures; 0.5 removes the most while touching the fewest steps.
+#: With 1/2, a guarded denominator f' + param*f stays between 1/2 and 3/2
+#: times f' with the same sign, so the parameter can at most double the
+#: Newton-like step and never reverse it. Not tuned; it is the only value
+#: the committed results use.
 GUARD = 0.5
 
 
