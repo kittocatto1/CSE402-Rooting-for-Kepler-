@@ -1,0 +1,10 @@
+{
+  "config_fingerprint": "7931e8ff",
+  "config_name": "safeguard",
+  "experiment": "safeguard",
+  "git_commit": "bb4d7c6134606fb18a20e1a9f1680dcc9365a85b",
+  "git_dirty": true,
+  "n_rows": 32,
+  "table": "order.csv",
+  "written_at": "2026-10-02T14:03:52+00:00"
+}

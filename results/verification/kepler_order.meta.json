@@ -1,0 +1,10 @@
+{
+  "config_fingerprint": "b04997c3",
+  "config_name": "verification",
+  "experiment": "verification",
+  "git_commit": "59b8ded8b30621d89e10f7f03e48e16a99eaa1c2",
+  "git_dirty": true,
+  "n_rows": 36,
+  "table": "kepler_order.csv",
+  "written_at": "2026-10-02T14:01:29+00:00"
+}

@@ -6,19 +6,58 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+.DS_Store
 
-# Generated outputs - never commit result files, they are reproducible.
+# LaTeX build intermediates (report/ and docs/).
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# Generated outputs. Everything under results/ is ignored except the small
+# tables listed below, so the numbers quoted in the README and the report can
+# be checked without rerunning anything. The large per-solve dumps
+# (results/grid_benchmark/raw.csv, results/safeguard/raw.csv, both well over
+# 2 MB) stay ignored; the scripts in scripts/ regenerate them.
 results/**
+!results/**/
 !results/.gitkeep
-figures/
+!results/README.md
+!results/reference_roots.csv
+!results/*/summary.csv
+!results/*/*.meta.json
+!results/verification/*.csv
+!results/safeguard/order.csv
+!results/grid_benchmark/timing.csv
+!results/grid_benchmark/history.csv
+!results/error_propagation/*.csv
+!results/monte_carlo/*.csv
+
+# Figures are built by scripts/make_report_figures.py and committed so they
+# can be viewed without running anything. Every PDF is tracked. PNG copies are
+# tracked only when under 1 MB; the two below are larger, and their PDF
+# versions hold the same figure.
+figures/grid/iterations_heatmaps.png
+figures/grid/failure_maps.png
+
 data/raw/**
 !data/raw/.gitkeep
 
-# Source papers - not redistributable, and not ours to republish. The two
-# MDPI/AIMS ones are CC-BY and could legally be committed, but Danby (1987)
-# and Markley (1995) are Springer and Fulton (2018) is IOP, so a blanket rule
-# is safer than a per-file one nobody remembers to apply.
-# Every DOI is recorded in papers/README.md, which IS committed, so the
-# downloads stay reproducible the way data/README.md does it for datasets.
+# Source papers. Only the PDFs whose licence allows redistribution are
+# tracked (CC BY journal articles and arXiv preprints, listed in
+# papers/README.md). Publisher-copyright papers (Danby 1987, Markley 1995 and
+# the system papers) are listed there by DOI and never committed.
 papers/**
 !papers/README.md
+!papers/nwm9_mittal_2024.pdf
+!papers/nwm11_mittal_2025.pdf
+!papers/solaiman_hashim_2021.pdf
+!papers/matthies_2016_arxiv1602.07026.pdf
+!papers/napier_2024_arxiv2411.15374.pdf
+!papers/radvel_fulton_2018_arxiv1801.01947.pdf
+!papers/kipping_2013_arxiv1306.4982.pdf

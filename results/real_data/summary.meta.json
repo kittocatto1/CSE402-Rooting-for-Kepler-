@@ -1,0 +1,10 @@
+{
+  "config_fingerprint": null,
+  "config_name": null,
+  "experiment": "real_data",
+  "git_commit": "bb4d7c6134606fb18a20e1a9f1680dcc9365a85b",
+  "git_dirty": true,
+  "n_rows": 15,
+  "table": "summary.csv",
+  "written_at": "2026-10-02T14:07:01+00:00"
+}
