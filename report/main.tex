@@ -251,8 +251,12 @@ onward describes the experiments.
 \subsection{The with-memory iteration}
 \label{sec:nwm}
 
-We use NWM11 to show the structure; NWM9 is built the same way with one
-parameter instead of two. Starting from $s_k$, one NWM11 iteration is
+Both methods reuse earlier evaluations, but they extend different
+eighth-order parents. NWM11 tunes its first and last sub-steps with
+$\alpha_k$ and $\beta_k$; NWM9 tunes only its last, with $\alpha_n$, and its
+second sub-step has no parameter (it is given in Section~\ref{sec:orderdrop}).
+We use NWM11 to show the structure. Starting from $s_k$, one NWM11
+iteration is
 \begin{align}
 v_k     &= s_k - \frac{f(s_k)}{f'(s_k) + \alpha_k f(s_k)}, \label{eq:step1}\\
 t_k     &= v_k - \frac{f(v_k)}{q}
@@ -330,8 +334,10 @@ Interpolated derivative       & 1.76 & 0 \\
 \end{tabular}
 \end{table}
 
-We report two costings. The \emph{measured} weights are what our Python
-code actually pays. The \emph{call-count} weights describe a compiled
+We report two costings. The \emph{measured} weights are a proxy for what
+our Python code pays: each primitive is timed alone, and the interpolated
+derivative is timed as one divided difference, not as the full Hermite
+routine. Wall-clock time is therefore measured separately. The \emph{call-count} weights describe a compiled
 implementation with a fused \texttt{sincos} routine, where a pair costs
 one call and arithmetic is nearly free. Like the efficiency index, this
 costing treats an interpolated derivative as free. Unlike it, it charges
@@ -376,7 +382,8 @@ that parameter is set to zero for that iteration, so that sub-step is the
 same as in the memoryless eighth-order method. The test costs two multiplications and
 no new evaluations.
 
-The safeguard cannot lower the order. Near a simple root, $f \to 0$ while
+Once the iteration is close enough to the root, the safeguard does not
+change the order. Near a simple root, $f \to 0$ while
 $f'(s_k) \to f'(E^*) \ne 0$, and the parameters stay bounded, so
 after some iteration $|\lambda f|$ stays below $c|f'|$ and the test passes
 every time. From then on the guarded method takes exactly the published
@@ -428,7 +435,8 @@ guarded NWM11 iteration.
 \caption{One iteration of guarded NWM11. The published method is the same
 diagram without the two green tests. In the first iteration there is no
 memory yet, so $\alpha_k$ and $\beta_k$ take the papers' fixed starting
-values.}
+values. If $\alpha_k$ is rejected, $\beta_k$ is not recomputed: it keeps its
+previous value, which then faces its own test.}
 \label{fig:iteration}
 \end{figure}
 
@@ -582,6 +590,11 @@ and result file behind it. The test suite has 284 tests, including checks
 of every solver against its paper and of the safeguard's three claims: it leaves ordinary points alone, cuts
 corner failures and keeps the order.
 
+All runs used one Apple M1 Pro laptop (macOS), with the benchmarks under
+CPython 3.12. The metadata files record the commit each table came from,
+but they also record uncommitted changes in the working tree at run
+time, so the commit identifies the code only approximately.
+
 % =====================================================================
 \section{Results and Discussion}
 
@@ -636,15 +649,16 @@ As a further check, setting every self-accelerating parameter to zero
 gives order $8$ to within $10^{-3}$ on all eight functions for both methods, which
 confirms that the extra order comes from the memory.
 
-\paragraph{The right root, not just a small residual.} A solver can
-converge to a wrong branch and still report a tiny residual. We ran each
+\paragraph{The right root, not just a small residual.} Kepler's equation has one real
+root for $e < 1$, since $f' \ge 1 - e > 0$, but a small residual can still
+hide a larger error in $E$ where $f'$ is small. We ran each
 solver from $E_0 = M$ on 4{,}975 points against the 50-digit reference
-(Table~\ref{tab:correct}). We call a converged solve a wrong root if it
-lands more than $10^{-6}$ from the reference. No solver returned one. The
+(Table~\ref{tab:correct}). We flag a converged solve if it lands more than
+$10^{-6}$ from the reference. No solver produced one. The
 errors of order $10^{-10}$ come from points where $f'$ is small: the
 stopping rule tests the residual, and the error in $E$ is roughly
 $f/f'$. Where a solver does not converge it uses up its iteration limit (100 in
-this check) and says so. That outcome is visible and can be retried, unlike a wrong root,
+this check) and says so. That outcome is visible and can be retried, unlike a silently wrong answer,
 so we treat it as a robustness problem in Section~\ref{sec:failure}.
 
 \begin{table}[h]
@@ -654,7 +668,7 @@ so we treat it as a robustness problem in Section~\ref{sec:failure}.
 \label{tab:correct}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-\textbf{Solver} & \textbf{Converged} & \textbf{Wrong roots} & \textbf{Largest $|E-E_{\mathrm{ref}}|$} \\
+\textbf{Solver} & \textbf{Converged} & \textbf{Error $>10^{-6}$} & \textbf{Largest $|E-E_{\mathrm{ref}}|$} \\
 \midrule
 Newton & 99.54\% & 0 & $3.4\times10^{-10}$ \\
 Danby  & 99.72\% & 0 & $1.6\times10^{-10}$ \\
@@ -724,8 +738,9 @@ Danby's. Under call counting the two kinds of iteration cost $4$ and $2$.
 \caption{Cost of one iteration. Left: weights measured in our Python
 code. Right: call counting, as in a compiled code with a fused
 \texttt{sincos}. Most of the difference between the two panels is the
-interpolated derivatives, which cost $1.76$ each in Python and close
-to nothing in compiled code.}
+interpolated derivatives, which cost $1.76$ each in Python; the right
+panel assumes they are free, an idealised model rather than a measured
+compiled code.}
 \label{fig:costbd}
 \end{figure*}
 
@@ -818,7 +833,7 @@ concentrated near $e \to 1$, $M \to 0$.}
 Table~\ref{tab:robust} splits non-convergence by region. Of 176 failures
 in 125{,}800 solves, 155 are in the hard corner, which holds only 5\% of
 the solves. Every failure is a solve that used up its 50 iterations. No
-solver crashed or returned a wrong root.
+solver crashed or returned an inaccurate root.
 
 \begin{table}[h]
 \centering\small
@@ -1089,7 +1104,10 @@ moves each parameter at least 1{,}490 times less than the noise does. The sizes 
 why. An error $\delta E$ changes the velocity by at most
 $K\,(d\nu/dE)\,\delta E$, and for this orbit $d\nu/dE \le 1.44$, so an
 error of $10^{-4}$ in $E$ moves $v_r$ by at most
-$7\times10^{-4}$\,m\,s$^{-1}$. The measurement uncertainties are 0.8 to
+$7\times10^{-4}$\,m\,s$^{-1}$. The solvers stop on the residual, not
+on $E$, but since $f' \ge 1-e$, $|E - E^*| \le |f(E)|/(1-e)$: a residual
+tolerance of $10^{-4}$ bounds the velocity error by about
+$1.1\times10^{-3}$\,m\,s$^{-1}$ for this orbit. The measurement uncertainties are 0.8 to
 3.0\,m\,s$^{-1}$.
 
 Only Newton at $10^{-4}$ shows a clear solver effect, $6.4\times10^{-4}$
@@ -1108,8 +1126,11 @@ tolerance, gives the same fit at every setting.
 
 The spread across the 50 noisy refits is smaller than the MCMC posterior
 width by 3\% for $K$, 5\% for $e$, 9\% for $\omega$ and 21\% for
-$P$. The two estimates of the noise are computed independently, so their
-agreement checks both.
+$P$. The two describe different things, the spread of the fitted
+estimator under simulated noise and the posterior width for one
+dataset, so similar sizes are a consistency check, not a validation.
+With 50 refits a standard deviation is itself uncertain by about 10\%,
+so only the 21\% gap for $P$ is clearly larger than chance.
 
 \begin{figure*}[t]
 \centering
@@ -1219,10 +1240,12 @@ NWM9 converges on every grid point, and changing its guess from $E_0 = M$
 to Napier's saves it more iterations than switching from Danby to NWM9
 does.
 
-Downstream, the solver does not change the fitted orbit in any way that
-matters: even Newton stopped at $10^{-4}$ moves it about 1{,}500 times
-less than the measurement noise does. A new solver therefore has to win
-on speed. In Python it does not, so Danby or Markley remain the practical
+Downstream, for our injected orbit with $e = 0.35$ on the HD~164922
+schedule, even Newton stopped at $10^{-4}$ moves the fit about 1{,}500
+times less than the measurement noise does. More eccentric orbits were
+not tested. In this setting extra solver precision buys nothing, so a
+new solver has to win on robustness or speed. Our guard gives NWM11 the
+robustness. On speed, in Python it does not win, so Danby or Markley remain the practical
 choice. Our call counts do not promise a win in compiled code either:
 with one call per $(\sin,\cos)$ pair and free arithmetic, the median solve
 costs five calls for Danby, NWM9 and NWM11 alike, and the mean is higher
@@ -1248,7 +1271,8 @@ for guarded NWM11 (6.3 against 4.9 for Danby).
       does not act on NWM9's second sub-step, which has no parameter.
 \item \textbf{One injected orbit.} The downstream study uses one orbit
       with $e = 0.35$, and its posterior widths come from one short
-      RadVel MCMC run, capped at 2000 steps. The margin over noise is large, but more eccentric
+      RadVel MCMC run, capped at 2000 steps and not seeded, so a rerun
+      gives slightly different widths. The margin over noise is large, but more eccentric
       orbits were not tested.
 \item \textbf{The incumbent.} RadVel's compiled Danby, with its own guess
       and a $10^{-12}$ tolerance, was not run under our cost counting. Our
