@@ -443,3 +443,49 @@ def plot_safeguard_failures(summary_df: pd.DataFrame,
     ax.legend(loc="upper right", fontsize=12, frameon=False)
     fig.tight_layout()
     return fig
+
+
+def plot_repair_trajectory(traj_df):
+    """One repaired failure: error per iteration, and the published guard ratios.
+
+    Top: |E - E*| for published, memory-off and guarded NWM11 at one hard-corner
+    point. Bottom: the correction sizes |alpha f|/|f'| and |beta f|/|f'| the
+    published method used, with the guard's limit of 1/2.
+    """
+    colours = {"nwm11": "#4f7391", "nwm11_memoryless": "#9aa7b2",
+               "nwm11_guarded": "#e07b24"}
+    names = {"nwm11": "published", "nwm11_memoryless": "memory off",
+             "nwm11_guarded": "guarded"}
+    fig, (top, bot) = plt.subplots(2, 1, figsize=(5.2, 5.0), sharex=True,
+                                   gridspec_kw={"height_ratios": [1.25, 1]})
+    last = 0
+    for solver in ["nwm11", "nwm11_memoryless", "nwm11_guarded"]:
+        g = traj_df[traj_df.solver == solver].sort_values("iteration")
+        g = g[g.iteration <= 12]
+        err = g.error.clip(lower=1e-17)
+        top.semilogy(g.iteration, err, marker="o", markersize=4, linewidth=1.8,
+                     color=colours[solver], label=names[solver])
+        last = max(last, int(g.iteration.max()))
+    top.set_ylabel(r"$|E - E^*|$")
+    top.legend(frameon=False, fontsize=9, loc="lower left")
+    top.grid(True, which="major", color="0.9", linewidth=0.6)
+    e, M = traj_df.e.iloc[0], traj_df.M.iloc[0]
+    top.set_title(f"NWM11 at e = {e:.4f}, M = {M:.1e} (Napier's guess)", fontsize=10)
+
+    g = traj_df[(traj_df.solver == "nwm11") & (traj_df.iteration <= 12)].sort_values("iteration")
+    bot.semilogy(g.iteration, g.alpha_ratio, marker="s", markersize=4, linewidth=1.5,
+                 color="#2e8b7a", label=r"$|\alpha_k f(s_k)|/|f'(s_k)|$")
+    bot.semilogy(g.iteration, g.beta_ratio, marker="^", markersize=4, linewidth=1.5,
+                 color="#b5534a", label=r"$|\beta_k f(t_k)|/|f'(s_k)|$")
+    bot.axhline(0.5, color="0.25", linestyle="--", linewidth=1.0)
+    bot.text(12.2, 0.5, "guard limit 1/2", va="center", ha="right", fontsize=8,
+             color="0.25", backgroundcolor="white")
+    bot.set_ylabel("correction / derivative\n(published NWM11)")
+    bot.set_xlabel("iteration")
+    bot.legend(frameon=False, fontsize=8, loc="upper left")
+    bot.grid(True, which="major", color="0.9", linewidth=0.6)
+    bot.set_xlim(-0.3, 12.3)
+    for ax in (top, bot):
+        ax.spines[["top", "right"]].set_visible(False)
+    fig.tight_layout()
+    return fig

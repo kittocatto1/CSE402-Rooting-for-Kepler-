@@ -705,3 +705,22 @@ def run(config_path: str) -> None:
         # the grid benchmark until this passes.
         print(f"\n{n_failed} solver(s) FAILED verification - do not run the "
               "grid benchmark until this is resolved.")
+
+
+def reached_root_within(solver_name: str, e: float, M: float, n_iterations: int = 8) -> bool:
+    """Does the solver reach the root from E0 = M within ``n_iterations``?
+
+    The order scan on Kepler's equation runs ten iterations from E0 = M. If
+    the solver has not reached the root by the eighth, the last few errors
+    belong to a wandering iterate, and the ratio the order estimator forms
+    from them is not a convergence order. Figure and table use this test to
+    show such entries as "n.c." instead of a number.
+    """
+    import keplerbench.guesses  # noqa: F401
+    import keplerbench.solvers  # noqa: F401
+    from keplerbench.core.registry import get_guess, get_solver
+    from keplerbench.experiments.runner import solve_one
+
+    result = solve_one(get_solver(solver_name), get_guess("simple"), e, M,
+                       max_iter=n_iterations)
+    return bool(result.converged)

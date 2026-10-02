@@ -37,9 +37,14 @@ def plot_tolerance_vs_parameter_shift(shift_df):
             f"found; got {list(shift_df.columns)}"
         )
 
-    fig, axes = plt.subplots(1, len(params), figsize=(4.2 * len(params), 3.6),
+    # Two columns, so each panel stays readable in a two-column paper.
+    ncols = min(2, len(params))
+    nrows = -(-len(params) // ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5.0 * ncols, 3.4 * nrows),
                              squeeze=False, sharex=True)
-    axes = axes[0]
+    for extra in axes.flat[len(params):]:
+        extra.set_visible(False)
+    axes = list(axes.flat)
 
     for ax, param in zip(axes, params):
         col = f"{param}_shift_sigma"

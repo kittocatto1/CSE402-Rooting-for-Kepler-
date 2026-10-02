@@ -132,11 +132,21 @@ def _measured_vs_claimed_order() -> plt.Figure:
     return convergence_plots.plot_measured_vs_claimed_order(order).figure
 
 
+def _repair_trajectory() -> plt.Figure:
+    return summary_plots.plot_repair_trajectory(load_results(SAFEGUARD, "trajectory.csv"))
+
+
 def _order_vs_eccentricity() -> plt.Figure:
     # kepler_order.csv: order measured on Kepler's equation across the
     # eccentricity range, which is a different measurement from the paper
     # test functions in order.csv and the only one carrying an `e` column.
     order = load_results(VERIFICATION, "kepler_order.csv")
+    # Drop estimates from runs that had not reached the root: they are not
+    # convergence orders (see verification.reached_root_within).
+    from keplerbench.experiments.verification import reached_root_within
+    ok = [reached_root_within(r.solver, float(r.e), float(r.M))
+          for r in order.itertuples()]
+    order = order[ok]
     return convergence_plots.plot_order_vs_eccentricity(order, log_1me=True).figure
 
 
@@ -252,6 +262,8 @@ FIGURES = [
            [(GRID, "history.csv")]),
     Figure("measured_vs_claimed_order", "convergence", _measured_vs_claimed_order,
            [(VERIFICATION, "order.csv")]),
+    Figure("repair_trajectory", "safeguard", _repair_trajectory,
+           [(SAFEGUARD, "trajectory.csv")]),
     Figure("order_vs_eccentricity", "convergence", _order_vs_eccentricity,
            [(VERIFICATION, "kepler_order.csv")]),
     Figure("iterations_heatmaps", "grid", _iterations_heatmaps,

@@ -33,6 +33,7 @@ results/**
 !results/*/*.meta.json
 !results/verification/*.csv
 !results/safeguard/order.csv
+!results/safeguard/trajectory.csv
 !results/grid_benchmark/timing.csv
 !results/grid_benchmark/history.csv
 !results/error_propagation/*.csv

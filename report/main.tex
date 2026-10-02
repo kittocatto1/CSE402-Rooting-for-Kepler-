@@ -190,18 +190,14 @@ finding where they break. Our contributions are:
       \texttt{sin}-call units (Section~\ref{sec:grid}). It shows that the
       with-memory methods' median saving over Danby comes from the
       eighth-order step, not the memory, and that the starting guess can
-      matter more than the method: replacing
-      $E_0 = M$ with Napier's guess cuts NWM9's mean iteration count from
-      2.37 to 1.44 and removes all of its failures (Section~\ref{sec:guess}).
+      matter more than the method (Section~\ref{sec:guess}).
 \item \textbf{An explanation of the failures.} The self-accelerating
       parameter divides by $f'$, so near $f' = 0$ its correction can grow as
-      large as the derivative it adjusts. Switching the memory off shows
-      that the parameter is the cause: all 74 of NWM11's failed solves and
-      79 of NWM9's 81 then converge (Section~\ref{sec:failure}).
+      large as the derivative it adjusts. Switching the memory off
+      confirms that the parameter is the cause (Section~\ref{sec:failure}).
 \item \textbf{An improvement to the base method.} A safeguard on the
-      parameter that cuts NWM11's failures from 74 to 3, against Danby's 2,
-      without changing its order or its iteration count
-      (Section~\ref{sec:fix}).
+      parameter that brings NWM11 to Danby's robustness without changing
+      its order or its iteration count (Section~\ref{sec:fix}).
 \item \textbf{A downstream check} showing how far solver error travels
       into a fitted orbit, compared with the noise in real data
       (Section~\ref{sec:downstream}).
@@ -924,10 +920,10 @@ The order scan on Kepler's equation itself (Table~\ref{tab:ordere},
 Figure~\ref{fig:ordere}) shows a second weakness of NWM9, one that starts
 in a sub-step with no parameter. Each run starts from $E_0 = M = 0.3$ and takes ten
 iterations. NWM11 keeps its order of about $10.7$ all the way to
-$e = 0.999$. NWM9's values at $e = 0.9$ and $e \ge 0.99$ are not
-convergence orders. In those runs NWM9 reached the root only on the last
-iteration or not at all, so the estimator was fed the errors of a
-wandering iterate. Newton's $2.13$ and $1.79$ have the same cause.
+$e = 0.999$. At $e = 0.9$ and $e \ge 0.99$ NWM9 needs 10 to 20
+iterations to reach the root from $E_0 = M$ (Newton needs 12 or more at
+$e \ge 0.99$), so no order can be measured there; the table marks these
+n.c. The cause is not the order but where the first iterate lands.
 
 The wandering starts in NWM9's second sub-step,
 $z = x - t\,[1 + u + (1 + \frac{1}{1+t})\,u^2]$ with $t = f(x)/f'(x)$ and
@@ -948,17 +944,18 @@ altogether: from Napier's guess NWM9 converges on all 7{,}400 grid points
 \centering\footnotesize
 \setlength{\tabcolsep}{3.2pt}
 \caption{Order measured on Kepler's equation at $M = 0.3$ from $E_0 = M$,
-ten iterations at 2000 digits. A dash means the estimate could not be
-resolved. NWM9's entries at $e = 0.9$ and $e \ge 0.99$, and Newton's at
-$e \ge 0.99$, come from runs that had not converged (see text).}
+ten iterations at 2000 digits. n.c.: the solver had not reached the root
+within eight iterations, so the estimator saw a wandering iterate and its
+value is not an order (\texttt{verification.reached\_root\_within}). These
+points are also left out of Figure~\ref{fig:ordere}.}
 \label{tab:ordere}
 \begin{tabular}{@{}lrrrrrrr@{}}
 \toprule
 $e$ & 0.3 & 0.7 & 0.9 & 0.95 & 0.99 & 0.995 & 0.999 \\
 \midrule
-Newton & 2.00 & 2.00 & 2.00 & 2.00 & 2.13 & --- & 1.79 \\
+Newton & 2.00 & 2.00 & 2.00 & 2.00 & n.c. & n.c. & n.c. \\
 Danby  & 4.00 & 4.00 & 4.00 & 4.00 & 4.00 & 4.00 & 4.00 \\
-NWM9   & 8.90 & 8.90 & 2.82 & 8.90 & 4.48 & 0.72 & 0.36 \\
+NWM9   & 8.90 & 8.90 & n.c. & 8.90 & n.c. & n.c. & n.c. \\
 NWM11  & 10.72 & 10.76 & 10.88 & 10.84 & 10.73 & 10.74 & 10.74 \\
 \bottomrule
 \end{tabular}
@@ -1045,7 +1042,25 @@ reference.}
 \label{fig:fix}
 \end{figure}
 
-\paragraph{NWM11.} The guard cuts NWM11's failures from 74 to 3. That is
+\begin{figure}[t]
+\centering
+\fig{safeguard/repair_trajectory.pdf}
+\caption{One repaired failure. Top: error per iteration for published,
+memory-off and guarded NWM11 at a hard-corner point. Bottom: the
+correction sizes the published method used. $\beta_k$'s correction passes
+the guard's limit at iterations 2 and 3 and reaches $10^9$ at iteration 5,
+which throws the iterate about 3{,}000 radians away; the guarded version
+rejects those steps and converges in six iterations. Data:
+\texttt{results/safeguard/trajectory.csv}.}
+\label{fig:trajectory}
+\end{figure}
+
+\paragraph{NWM11.} Figure~\ref{fig:trajectory} shows the guard at work on
+one failing point. The published method's $\beta_k$ correction grows past
+half of $|f'|$ while the iterate is still about one radian from the root,
+exactly the situation of Section~\ref{sec:failure}, and one later step is
+thrown thousands of radians away. Across the grid, the guard cuts NWM11's
+failures from 74 to 3. That is
 fewer than switching the memory off (9), and close to Danby (2). The
 guarded version converges on all 9 solves that fail with the memory off,
 so once its unsafe steps are removed the memory makes NWM11 more robust
@@ -1228,30 +1243,26 @@ Downstream   & Even Newton at $10^{-4}$ moves the fit about 1{,}500$\times$ less
 
 We reimplemented two recent with-memory methods, confirmed that they
 reach their published orders, and tested them on Kepler's equation against
-the methods astronomers already use. Their high order is real: they need
-fewer iterations than any other iterative method, and with our measured
-weights their median solve is 17\% cheaper than Danby's. That saving
-comes from one-iteration solves, where the memory is not yet used. It
-does not hold on average: a third or more of solves need a second
-iteration, which uses the memory and costs $10.62$ units against $3.34$
-for a classical one. In Python the saving does not show up on the clock
-either.
+the methods astronomers already use. Their high order is real and they
+need the fewest iterations, but the order is not where their typical
+saving comes from. Most solves finish in one iteration, before the
+memory is used, so the cheaper median belongs to the eighth-order parent.
+The memory pays off only in longer solves, where its interpolated
+derivatives make each iteration about three times as expensive, and in
+Python none of the saving reaches the clock.
 
 Their weakness is the corner where $f' \approx 0$. There the
 self-accelerating parameter, derived for iterates already near the root,
 becomes as large as the derivative it corrects and throws the step far
 from the root.
 Switching the memory off showed that this, not the base method, causes
-most failures. A safeguard that keeps the parameter only while its
-correction is less than half of $|f'|$ removes almost all of NWM11's
-failures and leaves its order and iteration count unchanged. With this
-change NWM11 fails on 3 of 29{,}600 solves against Danby's 2, and still
-needs fewer iterations (1.38 against 1.94, each at its best guess). The guard helps NWM9 less (81 to 17
-failures), because NWM9's overshoot happens in a sub-step that has
-no parameter. A better starting guess avoids it: from Napier's guess
-NWM9 converges on every grid point, and changing its guess from $E_0 = M$
-to Napier's saves it more iterations than switching from Danby to NWM9
-does.
+most failures. Our safeguard keeps the parameter only while its
+correction is less than half of $|f'|$. It makes NWM11 about as reliable
+as Danby while keeping NWM11's lower iteration count and its order, so the
+memory becomes safe to use rather than something to switch off. It helps
+NWM9 less, because NWM9's overshoot happens in a sub-step that has no
+parameter; for NWM9 the better remedy is the starting guess, which
+matters more than the choice between NWM9 and Danby.
 
 Downstream, for our injected orbit with $e = 0.35$ on the HD~164922
 schedule, even Newton stopped at $10^{-4}$ moves the fit about 1{,}500
