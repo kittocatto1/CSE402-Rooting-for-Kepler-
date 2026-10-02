@@ -52,10 +52,11 @@ data/raw/**
 !data/raw/hd164922.txt
 !data/raw/k2-131.txt
 
-# Source papers. Only the PDFs whose licence allows redistribution are
-# tracked (CC BY journal articles and arXiv preprints, listed in
-# papers/README.md). Publisher-copyright papers (Danby 1987, Markley 1995 and
-# the system papers) are listed there by DOI and never committed.
+# Source papers. Only the PDFs listed below are tracked: four CC BY 4.0
+# papers, and three arXiv preprints under the arXiv non-exclusive licence
+# kept as course reference copies (see papers/README.md). Publisher-copyright
+# papers (Danby 1987, Markley 1995 and the system papers) are listed there by
+# DOI and never committed.
 papers/**
 !papers/README.md
 !papers/nwm9_mittal_2024.pdf

@@ -7,8 +7,11 @@
     keplerbench run propagation       --config configs/error_propagation.yaml
     keplerbench run montecarlo        --config configs/monte_carlo.yaml
 
-Owner: Anisa. Fully wired - the subcommands will start working as the
-underlying experiment modules get implemented.
+``run`` covers four of the five experiments. The safeguard study and the
+real-data check run from their scripts, ``scripts/run_safeguard.py`` and
+``scripts/run_real_data_checks.py``.
+
+Owner: Anisa.
 """
 
 from __future__ import annotations

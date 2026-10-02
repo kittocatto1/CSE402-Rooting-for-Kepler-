@@ -1,9 +1,12 @@
-"""The four studies from the Work Plan (Proposal Section 5).
+"""The five experiments.
 
-  Step 2  Verification         -> verification.py        (Suchi)
-  Step 3  Grid benchmark       -> grid_benchmark.py      (Mahdi)
-  Step 4  Error propagation    -> error_propagation.py   (Fariha)
-  Step 5  Monte Carlo          -> monte_carlo.py         (Fariha)
+  Verification         -> verification.py        (Suchi)
+  Grid benchmark       -> grid_benchmark.py      (Mahdi)
+  Safeguard            -> safeguard.py           (Mahdi)
+  Error propagation    -> error_propagation.py   (Fariha)
+  Monte Carlo          -> monte_carlo.py         (Fariha)
+
+The real-data check, ``run_real_data_check``, lives in error_propagation.py.
 
 Shared by all of them:
   grid.py    the (e, M) sampling            (Mahdi)

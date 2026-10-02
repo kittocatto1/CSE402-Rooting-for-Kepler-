@@ -9,10 +9,10 @@ Why it is in the benchmark: it is the solver RadVel actually ships, so it is
 the "current practical standard" the newer methods have to beat, not a
 strawman.
 
-Cost per iteration (fill in once implemented, Section 4.1):
-  * distinct evaluation points : 1 (expected)
-  * full (sin, cos) pairs      : 1 (expected - f, f', f'', f''' all come from
-                                    one sincos call, which is the point)
+Cost per iteration (as counted by the cost model):
+  * distinct evaluation points : 1
+  * full (sin, cos) pairs      : 1 (f, f', f'', f''' all come from one
+                                    sincos call, which is the point)
   * synthesised derivatives    : 0
 
 Owner: Dipit.
@@ -31,8 +31,7 @@ from keplerbench.core.types import KeplerProblem
 class DanbySolver(IterativeSolver):
     """Fourth-order single-point scheme using f, f', f'' and f'''.
 
-    Shape of the update (VERIFY every line against Danby 1987 before
-    trusting it - do not take this docstring as authoritative):
+    The update, in the same form as RadVel's ``kepler.c``:
 
         f0 = E - e sin E - M
         f1 = 1 - e cos E          (= f')
@@ -54,14 +53,8 @@ class DanbySolver(IterativeSolver):
     reference = "Danby (1987), doi:10.1007/BF01235847"
 
     def step(self, problem: KeplerProblem, E: float, state: dict[str, Any]) -> float:
-        # TODO(Dipit):
-        #   1. f0, f1, f2, f3 = problem.derivatives(E, order=3)
-        #   2. Implement the three nested corrections d1, d2, d3.
-        #   3. Raise ZeroDivisionError if any denominator is 0 - the base
-        #      class turns that into a recorded failure instead of a crash,
-        #      which is what the robustness metric needs.
-        #   4. Cross-check against radvel.kepler on ~1000 random (e, M):
-        #      the roots must agree to ~1e-14.
+        # A zero denominator raises ZeroDivisionError, which the base class
+        # records as a failure instead of a crash.
         f0, f1, f2, f3 = problem.derivatives(E, order=3)
         d1 = -f0 / f1
         d2 = -f0 / (f1 + d1 * f2 / 2)

@@ -1,6 +1,9 @@
 # Rooting for Kepler
 
-CSE 402 (Numerical Methods) group project, BUET. We benchmark root finders
+CSE 402 (Numerical Methods) group project, BUET, Section A, Group 1. The
+submitted report is `report/A_01.pdf`, built from `report/main.tex`.
+
+We benchmark root finders
 for Kepler's equation, `E - e sin E = M`: Newton-Raphson, Danby's quartic
 method, Markley's non-iterative solver, and two with-memory methods (NWM9 and
 NWM11) by Mittal et al. Each iterative solver is paired with four starting
@@ -17,25 +20,27 @@ failures in the hard corner (e > 0.9, M < 0.1).
 | Mittal, Panday, Jäntschi & Bolunduț, *AIMS Mathematics* 10(3), 5421-5443 (2025) | `10.3934/math.2025250` | NWM11 | yes (CC BY) |
 | Danby, *Celestial Mechanics* 40, 303-312 (1987) | `10.1007/BF01235847` | Danby solver | no (Springer) |
 | Markley, *Celest. Mech. Dyn. Astron.* 63, 101-111 (1995) | `10.1007/BF00691917` | Markley solver | no (Springer) |
-| Napier, arXiv preprint (2024) | `arXiv:2411.15374` | Napier starting guess | yes (arXiv) |
-| Fulton et al., *PASP* 130, 044504 (2018) | `10.1088/1538-3873/aaaaa8` | RadVel | yes (arXiv preprint) |
-| Matthies et al., *Japan J. Indust. Appl. Math.* 33, 751-766 (2016) | `10.1007/s13160-016-0229-5` | base scheme of NWM9 | yes (arXiv preprint) |
+| Napier, arXiv preprint (2024) | `arXiv:2411.15374` | Napier starting guess | yes (arXiv, CC BY) |
+| Fulton et al., *PASP* 130, 044504 (2018) | `10.1088/1538-3873/aaaaa8` | RadVel | yes (arXiv preprint, reference copy) |
+| Matthies et al., *Japan J. Indust. Appl. Math.* 33, 751-766 (2016) | `10.1007/s13160-016-0229-5` | base scheme of NWM9 | yes (arXiv preprint, reference copy) |
 | Solaiman & Hashim, *Intell. Autom. Soft Comput.* 27(2), 379-390 (2021) | `10.32604/iasc.2021.015285` | base scheme of NWM11 | yes (CC BY) |
-| Kipping, *MNRAS Letters* 434, L51-L55 (2013) | `10.1093/mnrasl/slt075` | eccentricity sample in the grid | yes (arXiv preprint) |
+| Kipping, *MNRAS Letters* 434, L51-L55 (2013) | `10.1093/mnrasl/slt075` | eccentricity sample in the grid | yes (arXiv preprint, reference copy) |
 
 The first six are the base papers from the proposal. `papers/README.md`
-gives full citations, the licence of each file, the planet-system papers
-(DOI only), and notes on transcribing the formulas.
+gives full citations and the licence of each file, lists every other work the
+report cites (the planet-system papers, Murray & Dermott, the RadVel source
+and the Python libraries), and has notes on transcribing the formulas.
 
 ## Repository layout
 
 ```
 configs/      one YAML file per experiment, plus shared defaults
-data/         RV datasets (git-ignored); data/README.md records the sources
-docs/         the proposal and an earlier report draft
+data/         RadVel's three example RV datasets; data/README.md records the sources
+docs/         the project proposal (proposal.tex and its PDF)
 figures/      figures built by scripts/make_report_figures.py from results/
-papers/       source papers we may redistribute; papers/README.md lists all
-report/       the final report: main.tex (reads ../figures/) and the built A_01.pdf
+papers/       source papers (CC BY, plus arXiv preprints kept as course reference copies);
+              papers/README.md lists every cited work
+report/       the final report: main.tex (reads ../figures/) and the submitted A_01.pdf
 results/      result tables written by the scripts; see results/README.md
 scripts/      one entry point per experiment, plus the figure builder
 src/keplerbench/
@@ -63,6 +68,8 @@ pip install -e ".[rv]"      # adds radvel and emcee, for the RV experiments
 pip install -e ".[dev]"     # adds pytest and pytest-cov
 ```
 
+Or both extras at once: `pip install -e ".[rv,dev]"`.
+
 `requirements.txt` lists the same core packages and pytest.
 
 ## Reproducing the results
@@ -79,10 +86,21 @@ optional config path; the default is the one shown.
 | Measurement-noise Monte Carlo | `configs/monte_carlo.yaml` | `scripts/run_monte_carlo.py` | `monte_carlo/raw.csv`, `summary.csv` |
 | Solver agreement on real RV data | none | `scripts/run_real_data_checks.py` | `real_data/summary.csv` |
 
-The last three need the `rv` extra. The first run also fills
-`results/reference_roots.csv`, the cache of ground-truth roots that every
-error metric uses. `scripts/run_grid_benchmark.py --limit N` runs only the
-first N grid points, for a quick smoke test.
+The last three need the `rv` extra. `results/reference_roots.csv`, the cache
+of 50-digit ground-truth roots that every error metric uses, is committed.
+Each run reads it and only computes roots for points that are not in it yet.
+
+`scripts/run_grid_benchmark.py --limit N` runs only the first N grid points,
+for a quick smoke test. It still writes into `results/`, so it overwrites the
+committed grid tables with truncated ones. Point the output at a scratch
+folder instead:
+
+```
+KEPLERBENCH_RESULTS_DIR=/tmp/kb python scripts/run_grid_benchmark.py --limit 200
+```
+
+`KEPLERBENCH_RESULTS_DIR` replaces `results/` for every script
+(`src/keplerbench/io/results_io.py`).
 
 When the experiments are done, rebuild every figure from the tables:
 
@@ -93,7 +111,39 @@ python scripts/make_report_figures.py --list   # show what it would build
 
 The figures go to `figures/`, as PDF and PNG, and are committed so they can
 be viewed without running anything. Two PNGs over 1 MB are not committed;
-their PDF versions are. The report in `report/` includes these figures.
+their PDF versions are. Ten of the figures read
+`results/grid_benchmark/raw.csv`, which is not committed. On a fresh clone the
+script keeps the committed copy of any figure whose input is missing; run
+`scripts/run_grid_benchmark.py` first to rebuild those. `--only NAME` rebuilds
+a single figure.
+
+### Figures
+
+Each row is one entry of `FIGURES` in `scripts/make_report_figures.py` (the
+entry name is the file name). The report includes the ten marked "yes".
+
+| File in `figures/` | Reads from `results/` | In report |
+|---|---|---|
+| `convergence/measured_vs_claimed_order` | `verification/order.csv` | yes |
+| `convergence/order_vs_eccentricity` | `verification/kepler_order.csv` | yes |
+| `convergence/residual_histories` | `grid_benchmark/history.csv` | no |
+| `cost/cost_breakdown` | none (computed by `evaluation/cost_model.py`) | yes |
+| `cost/wallclock_vs_cost` | `grid_benchmark/timing.csv`, `grid_benchmark/raw.csv` | yes |
+| `cost/cost_vs_accuracy` | `grid_benchmark/raw.csv` | no |
+| `grid/iterations_by_guess` | `grid_benchmark/raw.csv` | yes |
+| `grid/iterations_by_set` | `grid_benchmark/raw.csv` (sets from `configs/grid_benchmark.yaml`) | yes |
+| `grid/iterations_best_guess` | `grid_benchmark/raw.csv` (sets from `configs/grid_benchmark.yaml`) | yes |
+| `grid/failure_maps_by_solver` | `grid_benchmark/raw.csv` | yes |
+| `grid/iterations_heatmaps` | `grid_benchmark/raw.csv` | no |
+| `grid/failure_maps` | `grid_benchmark/raw.csv` | no |
+| `grid/guess_effect` | `grid_benchmark/raw.csv` | no |
+| `grid/iterations_all_combinations` | `grid_benchmark/raw.csv` (sets from `configs/grid_benchmark.yaml`) | no |
+| `safeguard/safeguard_failures` | `safeguard/summary.csv` | yes |
+| `propagation/tolerance_vs_parameter_shift` | `error_propagation/summary.csv` | yes |
+| `propagation/error_budget` | `error_propagation/summary.csv`, `error_propagation/posterior_sigma.csv`, `monte_carlo/summary.csv` | no |
+| `propagation/amplification` | none (analytic) | no |
+
+`python scripts/make_report_figures.py --list` prints the same mapping.
 
 `results/README.md` explains each table. Most tables have a `.meta.json`
 sidecar with the git commit and a config fingerprint. The two large `raw.csv`
@@ -107,20 +157,24 @@ solve with its iteration trace.
 ## Tests
 
 ```
+pip install -e ".[rv,dev]"
 pytest
 ```
 
-`tests/test_config.py` loads every config in `configs/`.
-`tests/test_rv.py` uses RadVel, so it needs the `rv` extra. Without it, run
-`pytest --ignore=tests/test_rv.py`.
+The three RV datasets are committed under `data/raw/`, so with both extras
+installed `pytest` runs the whole suite. It takes about 10 minutes, most of it
+in two RadVel tests in `tests/test_rv.py`. `tests/test_config.py` loads every
+config in `configs/`. Without the `rv` extra, run
+`pytest --ignore=tests/test_rv.py`, which finishes in under a minute.
 
 ## Data
 
-The RV datasets are RadVel's example files and are not committed.
-`data/README.md` gives the download link and references for each:
-`k2-24.csv` (K2-24, 32 HIRES points), `hd164922.txt` (HD 164922, 401 HIRES
-points from 3 instrument eras) and `k2-131.txt` (K2-131, 70 HARPS-N and PFS
-points). The error-propagation and Monte Carlo studies use the HD 164922
+The RV datasets are RadVel's example files (MIT licence), committed under
+`data/raw/`. `data/README.md` gives the source link and references for each:
+`k2-24.csv` (K2-24, 32 HIRES points), `hd164922.txt` (HD 164922, 401 points
+from three instruments: Keck/HIRES before its 2004 detector upgrade, HIRES
+after it, and the Automated Planet Finder) and `k2-131.txt` (K2-131, 70
+HARPS-N and PFS points). The error-propagation and Monte Carlo studies use the HD 164922
 epochs and uncertainties with an injected orbit (e = 0.35).
 
 ## Results at a glance
@@ -167,15 +221,20 @@ solver (7,400 points x 4 guesses). Failures in total, and in the hard corner
 | S. M. A. M. Mahdi | 2105056 | Starting guesses (`guesses/`), the grid and sweep runner, the grid benchmark, robustness metrics, the safeguard (`solvers/safeguarded.py`, `experiments/safeguard.py`), grid figures |
 | Fariha Ifrat | 2105059 | RadVel downstream study: `rv/`, `experiments/error_propagation.py` and `monte_carlo.py`, `evaluation/propagation.py`, propagation figures |
 
-Each module's docstring names its owner. The `rv/` and propagation modules
-have no owner line in the code. Their owner is given in `configs/` and
-`tests/test_rv.py`.
+Most modules have an `Owner:` line in their docstring. The `rv/` modules,
+`experiments/error_propagation.py`, `experiments/monte_carlo.py`,
+`evaluation/propagation.py` and `plotting/propagation_plots.py` do not; they
+are Fariha's, as the table above, the `Owner:` lines in
+`configs/error_propagation.yaml`, `configs/monte_carlo.yaml` and
+`tests/test_rv.py`, and the git history show.
 
 ## Papers and licences
 
-The journal PDFs in `papers/` are CC BY 4.0. The arXiv preprints are
-included only as course reference copies, and each one's arXiv abs page is
-linked in `papers/README.md` as the authoritative source. Danby (1987),
+The three journal PDFs in `papers/` and the Napier preprint are CC BY 4.0.
+The other three preprints (Matthies et al., Fulton et al. and Kipping) are
+arXiv preprints under the arXiv non-exclusive distribution licence. They are
+included only as course reference copies for CSE 402, and each one's arXiv abs
+page, linked in `papers/README.md`, is the authoritative source. Danby (1987),
 Markley (1995) and the planet-system papers are under publisher copyright and
 are not included. The RV data belongs to the RadVel project and the original
 survey teams. Cite them as listed in `data/README.md` and `papers/README.md`.

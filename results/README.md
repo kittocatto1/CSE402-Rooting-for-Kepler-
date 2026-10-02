@@ -42,7 +42,8 @@ double. Every error metric is measured against this file.
   of 1000 repeats each.
 - `history.csv`: per-iteration records (iterate, residual, error, cost
   counters) on the small history sub-grid named in the config. The
-  convergence figures are drawn from it.
+  residual-history figure (`figures/convergence/residual_histories`) is
+  drawn from it. The two order figures in the report read `verification/`.
 
 `safeguard/` (from `run_safeguard.py`, config `safeguard.yaml`)
 
@@ -63,8 +64,8 @@ double. Every error metric is measured against this file.
   HD 164922 epochs with an injected orbit. It includes the fitted parameters,
   the number of Kepler solves and the fit time.
 - `summary.csv`: the shift of each fitted parameter from the fit at the
-  reference tolerance (1e-14), as an absolute value, a relative value and a
-  multiple of the posterior sigma.
+  reference tolerance (1e-14), in the parameter's own units, relative to its
+  value, and in units of the posterior sigma. All three are signed.
 - `posterior_sigma.csv`: posterior widths from one MCMC run.
 - `timing.csv`: median fit time per solver, compared with RadVel's native
   solver.

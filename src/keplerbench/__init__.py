@@ -7,9 +7,10 @@ into one shared pipeline, which makes the comparison fair:
 
     core/        the shared contract: problem, cost counter, result objects
     guesses/     starting-guess strategies (the "guess layer" factor)
-    solvers/     the five root finders being compared
+    solvers/     the five root finders being compared, plus safeguarded NWM9/NWM11
     reference/   high-precision reference roots (ground truth)
-    experiments/ the four studies from the Work Plan
+    experiments/ the five experiments (verification, grid benchmark, safeguard,
+                 error propagation, Monte Carlo)
     evaluation/  metrics computed from raw run records
     rv/          radial-velocity / downstream error-propagation model
     plotting/    figures for the report

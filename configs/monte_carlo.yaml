@@ -10,7 +10,7 @@ seed: 0
 
 extra:
   dataset: hd164922         # must match error_propagation.yaml
-  n_realisations: 50        # start here to debug, raise for the real run
+  n_realisations: 50        # the 50 refits behind the report's noise spread
   include_jitter: true
 
   # Must match error_propagation.yaml's injected_truth/initial_guess - this

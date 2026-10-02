@@ -9,25 +9,27 @@ max_iter: 50
 seed: 0
 
 extra:
-  # HD 164922: 401 points across 3 instruments, real cadence/uncertainties;
-  # see rv/dataset.py and data/README.md. A moderately eccentric orbit is
+  # HD 164922: 401 points from three instruments (HIRES before and after its
+  # 2004 upgrade, and APF), with their real cadence and uncertainties; see
+  # rv/dataset.py and data/README.md. A moderately eccentric orbit is
   # INJECTED in place of the real (multi-planet, single-planet-model-
-  # degenerate) signal - see the module docstring in
+  # degenerate) signal - see the comment above INJECTED_TRUTH in
   # experiments/error_propagation.py for why. (k2-24 also works - smaller,
-  # single-instrument, useful for quick debugging.)
+  # single-instrument and quicker.)
   dataset: hd164922
   tolerance_sweep: [1.0e-4, 1.0e-6, 1.0e-8, 1.0e-10, 1.0e-12, 1.0e-14]
   reference_tolerance: 1.0e-14
   # One MCMC run supplies the posterior widths; the tolerance sweep uses
   # maximum-likelihood fits only.
   run_mcmc: true
-  # 2000 steps is a debug/CI-scale budget (~5-10s, serial, 32 points, 4-5
-  # free parameters); raise for the real run and record whatever N is used.
+  # The posterior widths in results/error_propagation/posterior_sigma.csv
+  # (and in the report) come from this 2000-step run.
   mcmc_steps: 2000
 
   # The orbit injected in place of the real (multi-planet, single-planet-
-  # model-degenerate) signal - P is HD 164922's/K2-24's real, well-known
-  # period; tp/e/omega/K are a deliberately-chosen, moderately eccentric
+  # model-degenerate) signal - P is K2-24 b's period (20.885 d), reused
+  # here; it is not one of HD 164922's planets. tp/e/omega/K are a
+  # deliberately chosen, moderately eccentric
   # synthetic orbit, NOT a claim about the real planet's orbit. Must match
   # monte_carlo.yaml's injected_truth to be studying the same fit.
   injected_truth: {P: 20.885258, tp: 2400.0, e: 0.35, omega: 1.0, K: 5.0, gamma: 0.0}

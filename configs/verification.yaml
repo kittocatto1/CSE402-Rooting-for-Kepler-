@@ -16,9 +16,10 @@ extra:
   # The order estimate needs far more than double precision for the
   # high-order methods: an order-9 method passes 1e-9, 1e-81, 1e-729 in three
   # steps, and the estimator needs three usable errors for one estimate.
-  # Calibrated on NWM9 - at 100 dps the measured order comes out anywhere in
-  # 8.87-10.19 (only 3 usable terms); at 2000 it settles to 8.87-8.98 against
-  # a claim of 8.8989, and 3000 buys nothing. Costs ~2 s for the whole set.
+  # Calibrated on NWM9 (claimed 8.8989). At 100 dps the measured order comes
+  # out anywhere in 8.87-10.19 (only 3 usable terms). At 2000 it settles to
+  # 8.885-9.000 on NWM9's own eight functions (8.87-8.98 on the NWM11
+  # paper's eight), and 3000 buys nothing. About 3 s per solver.
   working_precision_dps: 2000
   # Small controlled Kepler set used by verify_kepler_correctness.
   kepler_check_points: 5000

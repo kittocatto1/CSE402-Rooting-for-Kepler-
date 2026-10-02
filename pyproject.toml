@@ -17,7 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# radvel is only needed for the downstream (Section 5.4 / 5.5) experiments.
+# radvel is only needed for the downstream experiments (error propagation,
+# Monte Carlo and the real-data check).
 rv = ["radvel>=1.4", "emcee>=3.1"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 

@@ -54,14 +54,17 @@ __all__ = [
 #: three usable errors in a row to produce ONE number, so the precision has
 #: to outrun p**3 digits or the sequence runs out before that happens.
 #:
-#: Measured on NWM9 (claimed 8.8989) over the paper's eight test functions:
+#: Calibrated on NWM9 (claimed 8.8989) over the NWM11 paper's eight test
+#: functions (PAPER_TEST_FUNCTIONS), before NWM9 had its own set:
 #:
 #:     dps=100    measured 8.87-10.19, only 3 usable terms  -> FAILS
 #:     dps=1000   measured 8.87-9.04                        -> 0.55 s
 #:     dps=2000   measured 8.87-8.98                        -> 2.14 s
 #:     dps=3000   identical to dps=2000                     -> 4.70 s
 #:
-#: 2000 is where the estimate stops improving.  NWM11 (order 10.7446) burns
+#: 2000 is where the estimate stops improving. On NWM9's own eight functions
+#: (NWM9_TEST_FUNCTIONS) the committed run gives 8.885-9.000
+#: (results/verification/order.csv).  NWM11 (order 10.7446) burns
 #: through digits faster still, so do not lower this.
 VERIFICATION_DPS = 2000
 
