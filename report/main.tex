@@ -18,6 +18,8 @@
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}
 
 \setlength{\tabcolsep}{4pt}
 
@@ -116,6 +118,7 @@ C following Murray and Dermott \cite{murray}, with a residual tolerance of
 $10^{-12}$ \cite{radvelsrc}. That is the method a new solver has to beat.
 
 \subsection{The base papers}
+\label{sec:base}
 
 Our base papers are two articles by Mittal, Panday and co-authors
 \cite{nwm9,nwm11}. Both start from an optimal eighth-order, three-step
@@ -197,6 +200,48 @@ at \url{https://github.com/kittocatto1/CSE402-Rooting-for-Kepler-}.
 
 % =====================================================================
 \section{Methodology}
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt,
+              minimum height=1.55cm, text width=2.3cm, fill=#1},
+  box/.default=white,
+  arr/.style={-{Stealth[length=2.2mm]}, thick},
+  node distance=0.36cm]
+\newcommand{\where}[1]{\\[2pt]{\scriptsize\itshape\color{black!55}#1}}
+\node[box=blue!6]   (papers) {\textbf{Base papers}\\NWM9 (2024)\\NWM11 (2025)\where{Sec.~\ref{sec:base}}};
+\node[box=blue!6, right=of papers] (impl) {\textbf{Reimplement}\\formulas as published,\\shared cost counter\where{Sec.~\ref{sec:nwm}, \ref{sec:code}}};
+\node[box=blue!6, right=of impl]   (verify) {\textbf{Verify}\\order at 2000 digits,\\roots vs.\ 50-digit ref.\where{Sec.~\ref{sec:verify}}};
+\node[box=orange!10, right=of verify] (grid) {\textbf{Grid benchmark}\\5 solvers, 4 guesses,\\7{,}400 $(e,M)$ points\where{Sec.~\ref{sec:grid}, \ref{sec:guess}}};
+\node[box=orange!10, right=of grid]   (fail) {\textbf{Failure analysis}\\where: hard corner\\why: $f'\to 0$, memory\where{Sec.~\ref{sec:failure}}};
+\node[box=green!10, right=of fail]    (guard) {\textbf{Safeguard}\\keep $\lambda$ only if\\$|\lambda f| \le \tfrac12 |f'|$\where{Sec.~\ref{sec:guard}, \ref{sec:fix}}};
+
+\draw[arr] (papers) -- (impl);
+\draw[arr] (impl) -- (verify);
+\draw[arr] (verify) -- (grid);
+\draw[arr] (grid) -- (fail);
+\draw[arr] (fail) -- (guard);
+\draw[arr, dashed] (guard.north) -- ++(0,0.4) -| node[pos=0.25, above, font=\scriptsize]
+  {re-run the same grid and order check on the guarded solvers} (grid.north);
+
+\node[box=purple!8, text width=5.2cm, minimum height=1.1cm, below=0.9cm of verify.south west, anchor=north west] (rv)
+  {\textbf{Downstream (RadVel)}: solver tolerance sweep,\\noise Monte Carlo, three real datasets\where{Sec.~\ref{sec:downstream}}};
+\draw[arr] (verify.south) -- (verify.south |- rv.north);
+\node[box=white, text width=3.6cm, minimum height=1.1cm, right=0.6cm of rv] (q)
+  {Is solver error small next to\\measurement noise?};
+\draw[arr] (rv) -- (q);
+\end{tikzpicture}
+\caption{How the study is organised. Each box writes its results under
+\texttt{results/} in the repository; the grey label gives the section
+that reports them.}
+\label{fig:pipeline}
+\end{figure*}
+
+Figure~\ref{fig:pipeline} shows how the study fits together. This section
+describes the methods and how we measure them; Section~\ref{sec:code}
+onward describes the experiments.
 
 \subsection{The with-memory iteration}
 \label{sec:nwm}
@@ -338,6 +383,52 @@ $f'(s_k) + \alpha_k f(s_k)$ between $\tfrac12$ and $\tfrac32$ times
 $f'(s_k)$, with the same sign, so the parameter can at most double the
 Newton step and can never reverse it. Every number in this report uses
 $c = 1/2$.
+Figure~\ref{fig:iteration} shows where the two tests sit in one
+guarded NWM11 iteration.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  stp/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              text width=3.3cm, minimum height=0.75cm, fill=blue!5},
+  test/.style={draw, diamond, aspect=3, align=center, inner sep=0.5pt,
+               fill=green!10, font=\scriptsize},
+  mem/.style={draw, dashed, rounded corners=2pt, align=center,
+              text width=1.45cm, inner sep=3pt, fill=black!3, font=\scriptsize},
+  arr/.style={-{Stealth[length=2mm]}, thick},
+  lab/.style={font=\scriptsize, fill=white, inner sep=1pt},
+  node distance=0.3cm]
+\node[stp] (s) {$s_k$: one $(\sin,\cos)$ call gives $f(s_k)$ and $f'(s_k)$};
+\node[stp, below=of s] (a) {$\alpha_k = -H_5''(s_k)/(2f'(s_k))$};
+\node[test, below=of a] (ga) {$|\alpha_k f(s_k)| \le \tfrac12|f'(s_k)|$?};
+\node[stp, below=0.4cm of ga] (v) {$\displaystyle v_k = s_k - \frac{f(s_k)}{f'(s_k)+\alpha_k f(s_k)}$};
+\node[stp, below=of v] (t) {$t_k$: eighth-order core, one $\sin$ call, no parameter};
+\node[stp, below=of t] (b) {$\beta_k$ from $H_6'''(v_k)$ and $H_7''''(t_k)$};
+\node[test, below=of b] (gb) {$|\beta_k f(t_k)| \le \tfrac12|f'(s_k)|$?};
+\node[stp, below=0.4cm of gb] (n) {$\displaystyle s_{k+1} = t_k - \frac{f(t_k)}{w' + \beta_k f(t_k)}$};
+\node[mem, left=0.45cm of t] (memory) {\textbf{memory}\\$s_{k-1}$, $v_{k-1}$, $t_{k-1}$ and their $f$, $f'$};
+
+\draw[arr] (s) -- (a);
+\draw[arr] (a) -- (ga);
+\draw[arr] (ga) -- node[lab, pos=0.45] {yes} (v);
+\draw[arr] (ga.east) -- ++(0.3,0) |- node[lab, pos=0.25] {no: $\alpha_k{=}0$} (v.east);
+\draw[arr] (v) -- (t);
+\draw[arr] (t) -- (b);
+\draw[arr] (b) -- (gb);
+\draw[arr] (gb) -- node[lab, pos=0.45] {yes} (n);
+\draw[arr] (gb.east) -- ++(0.3,0) |- node[lab, pos=0.25] {no: $\beta_k{=}0$} (n.east);
+\draw[arr, dashed] (memory.north) |- (a.west);
+\draw[arr, dashed] (memory.south) |- (b.west);
+\draw[arr, dashed] (n.west) -| node[lab, pos=0.8, align=center] {store} ([xshift=-0.3cm]memory.south west) |- (memory.west);
+\end{tikzpicture}
+\caption{One iteration of guarded NWM11. The published method is the same
+diagram without the two green tests. In the first iteration there is no
+memory yet, so $\alpha_k$ and $\beta_k$ take the papers' fixed starting
+values.}
+\label{fig:iteration}
+\end{figure}
+
 
 \subsection{Starting guesses}
 \label{sec:guesses}
@@ -361,6 +452,7 @@ fixed correction, so it takes no guess and runs once per point.
 \section{Implementation and Experiments}
 
 \subsection{Code structure}
+\label{sec:code}
 
 The code is a Python package, \texttt{keplerbench}, built on NumPy
 \cite{numpy}, SciPy \cite{scipy}, pandas \cite{pandas} and Matplotlib
