@@ -15,9 +15,12 @@ a missing one:
   * Every figure is attempted, so one missing result file does not hide the
     state of all the others. The run ends with a report and a non-zero exit
     status if anything did not rebuild.
-  * If a figure cannot be rebuilt, any previous copy of it is DELETED. An old
-    PDF sitting in figures/ would otherwise be picked up by the report build
-    and silently present last week's numbers as current.
+  * If a figure fails to build from inputs that exist, any previous copy of
+    it is DELETED. An old PDF sitting in figures/ would otherwise be picked
+    up by the report build and silently present old numbers as current.
+  * If an input file is simply absent (on a fresh clone the two large
+    raw.csv files are not committed), the committed copy of the figure is
+    kept and the run says so. Rerun the experiment to rebuild it.
 
 Usage::
 
@@ -359,6 +362,9 @@ def main() -> int:
             print(f"  wrote {detail}")
         else:
             print(f"  {figure.section}/{figure.name}: {status} - {detail}")
+            if status == "missing input":
+                print("    kept the committed copy, if any")
+                continue
             for path in _drop_stale(figure):
                 print(f"    removed stale {path.relative_to(REPO_ROOT)}")
 

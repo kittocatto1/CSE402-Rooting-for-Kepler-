@@ -47,6 +47,10 @@ figures/grid/failure_maps.png
 
 data/raw/**
 !data/raw/.gitkeep
+# RadVel's example datasets (MIT licence), small, needed by tests/test_rv.py.
+!data/raw/k2-24.csv
+!data/raw/hd164922.txt
+!data/raw/k2-131.txt
 
 # Source papers. Only the PDFs whose licence allows redistribution are
 # tracked (CC BY journal articles and arXiv preprints, listed in
