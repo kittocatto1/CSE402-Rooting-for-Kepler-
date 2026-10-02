@@ -21,7 +21,7 @@ from keplerbench.experiments.runner import solve_one
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    print("solvers:", ", ".join(list_solvers()))
+    print("solvers:", ", ".join(list_solvers(variants=True)))
     print("guesses:", ", ".join(list_guesses()))
     return 0
 

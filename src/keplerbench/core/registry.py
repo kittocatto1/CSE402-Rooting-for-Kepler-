@@ -58,6 +58,7 @@ def _load_all() -> None:
     """
     import keplerbench.guesses  # noqa: F401
     import keplerbench.solvers  # noqa: F401
+    import keplerbench.solvers.safeguarded  # noqa: F401
 
 
 def get_solver(name: str, **kwargs) -> KeplerSolver:
@@ -80,10 +81,16 @@ def get_guess(name: str, **kwargs) -> InitialGuess:
     return cls(**kwargs)
 
 
-def list_solvers() -> list[str]:
-    """All registered solver names, sorted."""
+def list_solvers(variants: bool = False) -> list[str]:
+    """Registered solver names, sorted.
+
+    By default only the five published methods. ``variants=True`` adds the
+    safeguarded solvers and memoryless controls from solvers/safeguarded.py
+    (category "variant"), which only the safeguard experiment uses.
+    """
     _load_all()
-    return sorted(_SOLVERS)
+    return sorted(name for name, cls in _SOLVERS.items()
+                  if variants or cls.category != "variant")
 
 
 def list_guesses() -> list[str]:

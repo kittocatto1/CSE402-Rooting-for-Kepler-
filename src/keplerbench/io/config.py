@@ -140,7 +140,7 @@ def load_config(path: str | Path) -> ExperimentConfig:
 
     # --- the known keys, coerced to the types the pipeline is written against.
     name = str(data.pop("name", path.stem))
-    solvers = _require("solvers", data.pop("solvers", []), list_solvers(), path)
+    solvers = _require("solvers", data.pop("solvers", []), list_solvers(variants=True), path)
     guesses = _require("guesses", data.pop("guesses", []), list_guesses(), path)
 
     grid = data.pop("grid", None) or {}

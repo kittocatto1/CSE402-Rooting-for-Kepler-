@@ -57,6 +57,8 @@ def _small_enough(param, f_value, fprime) -> bool:
 class NWM9GuardedSolver(NWM9Solver):
     """NWM9 that drops alpha_n for any step where it is not a small correction."""
 
+    category = "variant"
+
     def _accelerating_parameter(self, memory, x, y, z, fx, fy, fz, fpx, problem):
         alpha = super()._accelerating_parameter(memory, x, y, z, fx, fy, fz, fpx, problem)
         return alpha if _small_enough(alpha, fz, fpx) else 0 * alpha
@@ -65,6 +67,8 @@ class NWM9GuardedSolver(NWM9Solver):
 @register_solver("nwm11_guarded")
 class NWM11GuardedSolver(NWM11Solver):
     """NWM11 that drops alpha_k or beta_k for any step where it is not a small correction."""
+
+    category = "variant"
 
     def _alpha(self, memory, s, fs, fps, problem):
         alpha, alpha_term = super()._alpha(memory, s, fs, fps, problem)
@@ -83,6 +87,8 @@ class NWM11GuardedSolver(NWM11Solver):
 class NWM9MemorylessSolver(NWM9Solver):
     """Control: alpha_n fixed at zero. This is the eighth-order base method."""
 
+    category = "variant"
+
     theoretical_order = 8.0
 
     def _accelerating_parameter(self, *args, **kwargs):
@@ -92,6 +98,8 @@ class NWM9MemorylessSolver(NWM9Solver):
 @register_solver("nwm11_memoryless")
 class NWM11MemorylessSolver(NWM11Solver):
     """Control: alpha_k = beta_k = 0. This is the eighth-order base method."""
+
+    category = "variant"
 
     theoretical_order = 8.0
 

@@ -9,8 +9,8 @@
   With-memory (2025)      NWM11             10.7446    Suchi
 
 The safeguarded variants and memoryless controls live in solvers/safeguarded.py.
-They are registered only when that module is imported (the safeguard
-experiment does this), so the main benchmark and the per-iteration cost
+They have category "variant", so list_solvers() leaves them out unless asked
+(list_solvers(variants=True)); the main benchmark and the per-iteration cost
 table keep to the five published methods.
 """
 
